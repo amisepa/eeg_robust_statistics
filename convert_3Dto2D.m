@@ -131,3 +131,86 @@ lay.pos(end+1,:)  = [X Y];
 %     fprintf(fid, '%d %f %f %f %f %s\n', i, lay.pos(i,1), lay.pos(i,2), lay.width(i), lay.height(i), lay.label{i});
 % end
 % fclose(fid);
+
+
+% HEADCOLOR = [0 0 0];    % default head color (black)
+% HLINEWIDTH = 2;         % default linewidth for head, nose, ears
+% base  = rmax-.0046;
+% basex = 0.18*rmax;                   % nose width
+% tip   = 1.15*rmax; 
+% tiphw = .04*rmax;                    % nose tip half width
+% tipr  = .01*rmax;                    % nose tip rounding
+% q = .04; % ear lengthening
+% EarX  = [.497-.005  .510  .518  .5299 .5419  .54    .547   .532   .510   .489-.005]; % rmax = 0.5
+% EarY  = [q+.0555 q+.0775 q+.0783 q+.0746 q+.0555 -.0055 -.0932 -.1313 -.1384 -.1199];
+% % sf    = headrad/plotrad;   % squeeze the model ears and nose 
+% sf    = 1;   % squeeze the model ears and nose by this factor
+% % if ~ischar(HEADCOLOR) || ~strcmpi(HEADCOLOR,'none')
+% plot3([basex;tiphw;0;-tiphw;-basex]*sf,[base;tip-tipr;tip;tip-tipr;base]*sf,...
+%      2*ones(size([basex;tiphw;0;-tiphw;-basex])),...
+%      'Color',HEADCOLOR,'LineWidth',HLINEWIDTH);                 % plot nose
+% plot3(EarX*sf,EarY*sf,2*ones(size(EarX)),'color',HEADCOLOR,'LineWidth',HLINEWIDTH)    % plot left ear
+% plot3(-EarX*sf,EarY*sf,2*ones(size(EarY)),'color',HEADCOLOR,'LineWidth',HLINEWIDTH)   % plot right ear
+% % end
+% 
+% % if strcmp(SHADING,'interp')
+% %   rwidth = .035*1.3;             % width of blanking outer ring
+% % else
+% rwidth = .035;         % width of blanking outer ring
+% % end
+% CIRCGRID   = 201;       % number of angles to use in drawing circles
+% circ = linspace(0,2*pi,CIRCGRID);
+% rx = sin(circ); 
+% ry = cos(circ); 
+% rin    =  rmax*(1-rwidth/2);              % inner ring radius
+% ringx = [[rx(:)' rx(1) ]*(rin+rwidth)  [rx(:)' rx(1)]*rin];
+% ringy = [[ry(:)' ry(1) ]*(rin+rwidth)  [ry(:)' ry(1)]*rin];
+% BACKCOLOR = [.93 .96 1];  % EEGLAB standard
+% % ringh = patch(ringx,ringy,0.01*ones(size(ringx)),BACKCOLOR,'edgecolor','none'); hold on
+% 
+% squeezefac = 1.0;
+% HEADRINGWIDTH    = .007;% width of the cartoon head ring
+% hwidth = HEADRINGWIDTH;                   % width of head ring 
+% hin  = squeezefac*headrad*(1- hwidth/2);  % inner head ring radius
+% % headx = [[rx(:)' rx(1) ]*(hin+hwidth)  [rx(:)' rx(1)]*hin];
+% % heady = [[ry(:)' ry(1) ]*(hin+hwidth)  [ry(:)' ry(1)]*hin];
+% headx = [rx(:)' rx(1)]*hin;
+% heady = [ry(:)' ry(1)]*hin;
+% ringh= plot(headx,heady);
+% set(ringh, 'color',HEADCOLOR,'linewidth', HLINEWIDTH); hold on
+% 
+
+[tmpeloc, labels, Th, Rd, indices] = readlocs(chanlocs);
+% Note: Th and Rd correspond to indices channels-with-coordinates only
+plotrad = min(1.0,max(Rd)*1.02);            % default: just outside the outermost electrode location
+plotrad = max(plotrad,0.5);                 % default: plot out to the 0.5 head boundary
+rmax = 0.5;  % actual head radius - Don't change this!
+headrad = rmax;  % (anatomically correct)
+sf  = headrad/plotrad;    % squeeze the model ears and nose by this factor
+
+% ears and nose
+base  = rmax-.0046;
+tip   = 1.15*rmax; 
+tipr  = .01*rmax;                    % nose tip rounding
+q = .04; % ear lengthening
+
+% plot nose
+basex = 0.18*rmax;  % nose width
+tiphw = .04*rmax;   % nose tip half width
+plot3([basex;tiphw;0;-tiphw;-basex]*sf,[base;tip-tipr;tip;tip-tipr;base]*sf,...
+     2*ones(size([basex;tiphw;0;-tiphw;-basex])),'Color','k','LineWidth',2);
+
+% plot ears
+EarX  = [.497-.005  .510  .518  .5299 .5419  .54    .547   .532   .510   .489-.005]; % rmax = 0.5
+EarY  = [q+.0555 q+.0775 q+.0783 q+.0746 q+.0555 -.0055 -.0932 -.1313 -.1384 -.1199];
+plot3(EarX*sf,EarY*sf,2*ones(size(EarX)),'color','k','LineWidth',2)   %left
+plot3(-EarX*sf,EarY*sf,2*ones(size(EarY)),'color','k','LineWidth',2) % right
+
+plotchans = indices;
+% pltchans = find(Rd <= plotrad); % plot channels inside plotting circle
+
+default_intrad = 1;     % indicator for (no) specified intrad
+intrad = min(1.0,max(Rd)*1.02);             % default: just outside the outermost electrode location
+if plotrad > intrad
+    plotrad = intrad;
+end

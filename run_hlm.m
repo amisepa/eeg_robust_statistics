@@ -17,50 +17,49 @@ cd(dataDir)
 tmpSub = dir;
 idx = contains({tmpSub.name},'sub');
 tmpSub = {tmpSub(idx).name}';
-cd(outDir)
+mkdir(outDir); cd(outDir)
 eeglab; close;
 pop_editoptions('option_single',0); % ensure double precision
-
+pop_editoptions('option_parallel',1); % turn parrallel pool off
+            
 % add paths
-root = fileparts(which('limo_eeg'));
-addpath([root filesep 'limo_cluster_functions']);
-addpath([root filesep 'external' filesep 'psom']);
-addpath([root filesep 'external']);
-addpath([root filesep 'help']);
-ftPath = fileparts(which('ft_analysispipeline.m'));
-addpath(fullfile(ftPath, 'external','signal'))
-addpath(fullfile(ftPath, 'external','stats'))
-addpath(fullfile(ftPath, 'external','images'))
+% root = fileparts(which('limo_eeg'));
+% addpath([root filesep 'limo_cluster_functions']);
+% addpath([root filesep 'external' filesep 'psom']);
+% addpath([root filesep 'external']);
+% addpath([root filesep 'help']);
+% ftPath = fileparts(which('ft_analysispipeline.m'));
+% addpath(fullfile(ftPath, 'external','signal'))
+% addpath(fullfile(ftPath, 'external','stats'))
+% addpath(fullfile(ftPath, 'external','images'))
 
-% % Create study (PSD precomputed)
+% % Create study and compute PSD
 % commands = {};
-% iFile = 1;
-% for iSub = 1:4
+% for iSub = 1:5
 %     disp('--------------------------------------------')
 %     disp(['Processing subject ' num2str(iSub) ])
 %     disp('--------------------------------------------')
-%
+% 
 %     EEG = pop_loadset('filename', sprintf('sub-%2.2d.set',iSub),'filepath',fullfile(dataDir,sprintf('sub-%2.2d',iSub)));
-%
 %     EEG.saved = 'no';
 %     newpath = fullfile(outDir,EEG.subject); mkdir(newpath)
-%     newname = sprintf('sub-%2.2d.set',iSub);
-%     pop_saveset(EEG,'filepath',newpath,'filename',newname);
-%     commands = [ commands(:)' 'index' iSub 'load' fullfile(newpath, newname) ];
+%     newname(iSub,:) = { sprintf('sub-%2.2d.set',iSub) };
+%     pop_saveset(EEG,'filepath',newpath,'filename', newname{iSub});
+%     commands = [ commands(:)' 'index' iSub 'load' fullfile(newpath, newname{iSub}) ];
 %     [STUDY, ALLEEG] = std_editset(STUDY,ALLEEG,'name','test','commands', commands, ...
 %         'updatedat','on','savedat','off','rmclust','off');
 %     [STUDY, ALLEEG] = std_checkset(STUDY, ALLEEG); CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
-%
 % end
-% % [STUDY,EEG] = pop_savestudy(STUDY,EEG,'filename','test.study','filepath',outDir);
+% [STUDY, EEG] = pop_savestudy(STUDY,EEG,'filename','test.study','filepath',outDir);
 % CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
 % STUDY = std_makedesign(STUDY,ALLEEG,1,'name','STUDY.design 1','delfiles','off', 'defaultdesign','off', ...
 %     'variable1','type','values1',{'rest','trance'},'vartype1','categorical', ...
-%     'subjselect',{'sub-01','sub-02','sub-03','sub-04'});
+%     'subjselect',newname);
 % [STUDY, EEG] = pop_savestudy(STUDY, EEG, 'savemode','resave');
 % [STUDY, ALLEEG] = std_precomp(STUDY,ALLEEG,{},'savetrials','on', ...
 %     'rmicacomps','off', 'interp','off','recompute','on','spec','on', ...
-%     'specparams',{'specmode','psd','logtrials','on','freqrange',[1 13]});
+%     'specparams',{'specmode','psd','logtrials','on','freqrange',[1 15]});
+% CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
 % [STUDY, EEG] = pop_savestudy(STUDY, EEG, 'savemode','resave');
 % cd(outDir)
 % gong
@@ -68,6 +67,14 @@ addpath(fullfile(ftPath, 'external','images'))
 % Load study
 [STUDY, ALLEEG] = pop_loadstudy('filename','test.study','filepath',outDir);
 CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
+
+% STUDY = pop_statparams(STUDY,'condstats','on','method','perm','mcorrect','fdr','alpha',0.05);
+% STUDY = pop_specparams(STUDY, 'plotconditions','together','freqrange',[1 15] ,'averagechan','on');
+% [STUDY, specdata, specfreqs, pgroup, pcond] = std_specplot(STUDY,ALLEEG, ...
+%     'channels',{ALLEEG(1).urchanlocs.labels},'design',1,'noplot','on');
+% cond1 = cell2mat(specdata(1)); % condition 1
+% cond2 = cell2mat(specdata(2)); % condition 2
+% plotHDI(specfreqs',cond1,cond2,'Mean','dependent',.05,cell2mat(pcond)','rest','trance','Mean PSD + 95% HDI');
 
 %% Channel neighbors
 
@@ -91,6 +98,16 @@ fprintf('Saving channel neighbors for correction for multiple comparisons in \n%
 
 %% 1st level: Fixed effects
 
+% LIMO 1st level
+% pop_limo(STUDY,ALLEEG, ...
+%     'method','WLS', ...         % GLM optimization: OLS, IRLS, WLS (default)
+%     'measure','datspec', ...    % which EEG measure: daterp, datsec, datersp
+%     'freqlim',[0 13] , ...      % freqs (e.g., [0 30]); or timelim for ERP
+%     'erase','on', ...           % erase previous model
+%     'splitreg','off', ...       % split regression for continuous indep. var.
+%     'interaction','off');       % interaction model for categorical indep. var.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% std_limo %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % HLM Parameters
 studypath = STUDY.filepath;
 cd(studypath);
@@ -116,25 +133,16 @@ design_index = opt.design;
 model.defaults.datatype = Analysis(4:end);
 model.defaults.type = 'Channels';
 
-% LIMO 1st level
-% pop_limo(STUDY,ALLEEG, ...
-%     'method','WLS', ...         % GLM optimization: OLS, IRLS, WLS (default)
-%     'measure','datspec', ...    % which EEG measure: daterp, datsec, datersp
-%     'freqlim',[0 13] , ...      % freqs (e.g., [0 30]); or timelim for ERP
-%     'erase','on', ...           % erase previous model
-%     'splitreg','off', ...       % split regression for continuous indep. var.
-%     'interaction','off');       % interaction model for categorical indep. var.
-
 % model.set_files  = [];
 % model.cat_files  = [];
 % model.cont_files = [];
 
 % Cleaning old files from the current design (Cleaning ALL)
-if strcmp(opt.erase,'on')
-    [~,filename] = fileparts(STUDY.filename);
-    std_limoerase(STUDY.filepath, filename, STUDY.subject, num2str(STUDY.currentdesign));
-    STUDY.limo = [];
-end
+% if strcmp(opt.erase,'on')
+%     [~,filename] = fileparts(STUDY.filename);
+%     std_limoerase(STUDY.filepath, filename, STUDY.subject, num2str(STUDY.currentdesign));
+%     STUDY.limo = [];
+% end
 
 % Check if the measures has been computed and if the channels are interpolated
 % interpolated = zeros(1,length(STUDY.datasetinfo));
@@ -281,21 +289,7 @@ for iSubj = 1:nb_subjects
             OUTEEG.chanlocs = ALLEEG(inds).chanlocs;
             %             end
             OUTEEG.etc.merged{1}= ALLEEG(inds).filename;
-
-            % Def fields
-            %             OUTEEG.etc.datafiles.daterp   = [];
-            %             OUTEEG.etc.datafiles.datspec  = [];
-            %             OUTEEG.etc.datafiles.datersp  = [];
-            %             OUTEEG.etc.datafiles.dattimef = [];
-            %             OUTEEG.etc.datafiles.datitc   = [];
-            %             OUTEEG.etc.datafiles.icaerp   = [];
-            %             OUTEEG.etc.datafiles.icaspec  = [];
-            %             OUTEEG.etc.datafiles.icaersp  = [];
-            %             OUTEEG.etc.datafiles.icatimef = [];
-            %             OUTEEG.etc.datafiles.icaitc   = [];
-
-            % Filling fields
-            %             single_trials_filename = ;
+            %             single_trials_filename = EEGTMP.etc.datafiles.(opt.measureori);
             %             if exist(single_trials_filename,'file')
             %                 if strcmpi(measureflags.daterp,'on')
             %                     OUTEEG.etc.datafiles.daterp = single_trials_filename;
@@ -319,12 +313,9 @@ for iSubj = 1:nb_subjects
             %                     OUTEEG.etc.datafiles.icatimef = single_trials_filename;
             %                 end
             %             end
-
-            % Save info
             EEG = OUTEEG;
             save('-mat', fullfile(filepath_tmp, OUTEEG.filename), 'EEG');
             clear OUTEEG filepath_tmp
-
 
             % Statistical model
             fprintf('making up statistical model for %s ... \n',filename)
@@ -361,29 +352,29 @@ for iSubj = 1:nb_subjects
     end
 end
 
-% Add contrasts for conditions that were merged during design selection
-% i.e. multiple categorical variables (factors) and yet not matching the number
-% of variables (contrasts are then a weighted sum of the crossed factors)
-if ~isempty(factors) && isfield(factors, 'value') && ...
-        sum(arrayfun(@(x) ~strcmpi(x.label,'group'), STUDY.design(opt.design).variable)) == 1 % only one non-continuous variable other than group
-    if length(STUDY.design(opt.design).variable(1).value) ~= length(factors) % and this var has more values than the number of factors
-        limocontrast = zeros(length(STUDY.design(opt.design).variable(1).value),length(factors)+1); % length(factors)+1 to add the constant
-        for n=length(factors):-1:1
-            factor_names{n} = factors(n).value;
-        end
+% % Add contrasts for conditions that were merged during design selection
+% % i.e. multiple categorical variables (factors) and yet not matching the number
+% % of variables (contrasts are then a weighted sum of the crossed factors)
+% if ~isempty(factors) && isfield(factors, 'value') && ...
+%         sum(arrayfun(@(x) ~strcmpi(x.label,'group'), STUDY.design(opt.design).variable)) == 1 % only one non-continuous variable other than group
+%     if length(STUDY.design(opt.design).variable(1).value) ~= length(factors) % and this var has more values than the number of factors
+%         limocontrast = zeros(length(STUDY.design(opt.design).variable(1).value),length(factors)+1); % length(factors)+1 to add the constant
+%         for n=length(factors):-1:1
+%             factor_names{n} = factors(n).value;
+%         end
+% 
+%         index = find(arrayfun(@(x) ~strcmpi(x.label,'group'),STUDY.design(opt.design).variable)); % which one is not group
+%         for c=1:length(STUDY.design(opt.design).variable(index).value)
+%             limocontrast(c,1:length(factors)) = single(ismember(factor_names,STUDY.design(opt.design).variable(index).value{c}));
+%             limocontrast(c,1:length(factors)) = limocontrast(c,1:length(factors)) ./ sum(limocontrast(c,1:length(factors))); % scale by the number of variables
+%         end
+%     end
+% end
 
-        index = find(arrayfun(@(x) ~strcmpi(x.label,'group'),STUDY.design(opt.design).variable)); % which one is not group
-        for c=1:length(STUDY.design(opt.design).variable(index).value)
-            limocontrast(c,1:length(factors)) = single(ismember(factor_names,STUDY.design(opt.design).variable(index).value{c}));
-            limocontrast(c,1:length(factors)) = limocontrast(c,1:length(factors)) ./ sum(limocontrast(c,1:length(factors))); % scale by the number of variables
-        end
-    end
-end
-
-% transpose
-% model.set_files  = model.set_files';
-% model.cat_files  = model.cat_files';
-% model.cont_files = model.cont_files';
+% Transpose
+model.set_files  = model.set_files';
+model.cat_files  = model.cat_files';
+model.cont_files = model.cont_files';
 if all(cellfun(@isempty, model.cat_files )), model.cat_files  = []; end
 if all(cellfun(@isempty, model.cont_files)), model.cont_files = []; end
 
@@ -459,7 +450,1336 @@ model.defaults.Level            = 1;                 % 1st level analysis
 model.defaults.type_of_analysis = 'Mass-univariate'; % option can be multivariate
 
 % if ~exist('limocontrast','var')
-[LIMO_files, procstatus] = limo_batch('model specification',model,[],STUDY);
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% limo_batch %%%%%%%%%%%%%%%%%%%%%%%%%%% 
+
+% [LIMO_files, procstatus] = limo_batch('model specification',model,[],STUDY);
+% [LIMO_files, procstatus] = limo_batch(option,model,contrast)
+
+% run several 1st level analyses select directories and files - possibly enter contrasts of
+% interests and let it run. The batch relies on PSOM (see Ref). 
+% see opt.mode for parallel computing on grid using qsub or msub
+
+folder = fileparts(which('run_hlm.m'));
+addpath(genpath(folder))
+
+opt.mode                = 'session';    % run in the current session -- see psom for other options // in batch we use parfor
+opt.max_queued          = Inf;          % with a maximum of possible sessions
+opt.time_between_checks = 3;            % and x sec between job submission
+opt.flag_pause          = false;        % don't bother asking to start jobs
+opt.flag_debug          = false;        % report a bit more of issues
+option = 'model specification';
+% model = model;
+% batch_contrast = varargin{3};
+
+% psom_gb_vars                            % initialize PSOM variables
+
+mkdir(['derivatives' filesep 'LIMO_' STUDY.filename(1:end-6)]);
+mkdir(['derivatives' filesep 'LIMO_' STUDY.filename(1:end-6) filesep 'limo_batch_report']);
+LIMO_files.LIMO = [pwd filesep ['derivatives' filesep 'LIMO_' STUDY.filename(1:end-6)]];
+
+% Quick check
+if ~isempty(model.cat_files)
+    if size(model.cat_files,1) ~= size(model.set_files,1)
+        error('the number of set and cat files disagree')
+    end
+end
+if ~isempty(model.cont_files)
+    if size(model.cont_files,1) ~= size(model.set_files,1)
+        error('the number of set and cat files disagree')
+    end
+end
+
+% Build pipelines
+for subject = 1:size(model.set_files,1)
+
+    % build LIMO.mat files from import
+    command = 'limo_batch_import_data(files_in,opt.cat,opt.cont,opt.defaults)';
+    pipeline(subject).import.command = command; 
+    pipeline(subject).import.files_in = model.set_files{subject};
+    pipeline(subject).import.opt.defaults = model.defaults;
+
+%     if isfield(model.defaults,'type')
+    pipeline(subject).import.opt.defaults.type = model.defaults.type;
+%     else
+%         pipeline(subject).import.opt.defaults.type = 'Channels';
+%     end
+
+%     if isfield(model.defaults,'method')
+    pipeline(subject).import.opt.defaults.method = model.defaults.method;
+%     else
+%         pipeline(subject).import.opt.defaults.method = 'WLS';
+%     end
+
+%     if isfield(model.defaults,'type_of_analysis')
+    pipeline(subject).import.opt.defaults.type_of_analysis = model.defaults.type_of_analysis;
+%     else
+%         pipeline(subject).import.opt.defaults.type_of_analysis = 'Mass-univariate';
+%     end
+
+%     if exist('STUDY','var')
+%         if ~contains(STUDY.datasetinfo(subject).filename,{'sub-'}) && ...
+%                 ~contains(STUDY.datasetinfo(subject).filename,{'_task-'}) % not bids
+%             root = [fileparts(LIMO_files.LIMO) filesep 'sub-' STUDY.datasetinfo(subject).subject];
+%         else
+        subname = STUDY.datasetinfo(subject).subject;
+        extra   = STUDY.datasetinfo(subject).filepath(strfind(STUDY.datasetinfo(subject).filepath,subname)+length(subname):end);
+        root    = [fileparts(LIMO_files.LIMO) filesep subname extra]; % still in derivatives via LIMO_files.LIMO
+%         end
+
+        % if session and data are not in a derivatives/sess, make subdir
+%         if ~isempty(STUDY.datasetinfo(subject).session)
+            nsess = sum(strcmp(STUDY.datasetinfo(subject).subject,{STUDY.datasetinfo.subject}));
+            if ~contains(root,'ses-') && nsess >= 1
+%                 if ischar(STUDY.datasetinfo(subject).session)
+%                     reuse = dir(fullfile(root,['ses-*' STUDY.datasetinfo(subject).session]));
+%                     if ~isempty(reuse)
+%                         index = find(arrayfun(@(x) STUDY.datasetinfo(subject).session == eval(x.name(5:end)), reuse));
+%                         root = fullfile(reuse(index).folder,reuse(index).name);
+%                     else
+%                         root  = fullfile(root,['ses-' STUDY.datasetinfo(subject).session]);
+%                     end
+%                 else
+                    reuse = dir(fullfile(root,['ses-*' num2str(STUDY.datasetinfo(subject).session)]));
+                    if ~isempty(reuse)
+                        index = find(arrayfun(@(x) STUDY.datasetinfo(subject).session == eval(x.name(5:end)), reuse));
+                        root = fullfile(reuse(index).folder,reuse(index).name);
+                    else
+                        root = fullfile(root,['ses-' num2str(STUDY.datasetinfo(subject).session)]);
+                    end
+%                 end
+            end
+%         end
+
+        % [root filesep eeg] - case of bids without ses-
+%         if exist(fullfile(root,'eeg'),'dir')
+%             root = fullfile(root,'eeg');
+%         end
+
+%         if exist(root,'dir') ~= 7
+        mkdir(root);
+%         end
+        design_name = STUDY.design(STUDY.currentdesign).name;
+        design_name(isspace(design_name)) = [];
+        if strfind(design_name,'STUDY.') %#ok<STRIFCND>
+            design_name = design_name(7:end);
+        end
+        glm_name = [STUDY.filename(1:end-6) '_' design_name '_GLM_' model.defaults.type '_' model.defaults.analysis '_' model.defaults.method];
+        batch_contrast.LIMO_files{subject} = [root filesep glm_name filesep 'LIMO.mat'];
+        % pipeline(subject).import.opt.defaults.studyinfo = STUDY.design_info;
+%     else
+%         [root,~,~] = fileparts(model.set_files{subject});
+%         for l=min(length(LIMO_files.LIMO),length(root)):-1:1
+%             common(l) = root(l) == LIMO_files.LIMO(l);
+%         end
+%         root = fullfile(LIMO_files.LIMO,root(min(find(diff(common))):end)); %#ok<MXFND>
+%         glm_name = ['GLM_' model.defaults.method '_' model.defaults.analysis '_' model.defaults.type];
+%     end
+    pipeline(subject).import.files_out = [root filesep glm_name filesep 'LIMO.mat'];
+
+%     if strcmp(option,'both') && ~isfield(batch_contrast,'LIMO_files')
+%         batch_contrast.LIMO_files{subject} = [root filesep glm_name filesep 'LIMO.mat'];
+%         batch_contrast.LIMO_files = batch_contrast.LIMO_files';
+%     end
+% 
+%     if ~isempty(model.cat_files)
+    pipeline(subject).import.opt.cat = model.cat_files{subject};
+%     else
+%         pipeline(subject).import.opt.cat = [];
+%     end
+    if ~isempty(model.cont_files)
+        pipeline(subject).import.opt.cont = model.cont_files{subject};
+    else
+        pipeline(subject).import.opt.cont = [];
+    end
+    pipeline(subject).import.opt.defaults.name = fileparts(pipeline(subject).import.files_out);
+    LIMO_files.mat{subject}  = [root filesep glm_name filesep 'LIMO.mat'];
+    LIMO_files.Beta{subject} = [root filesep glm_name filesep 'Betas.mat'];
+
+    % make design and evaluate
+    command = 'limo_batch_design_matrix(files_in)';
+    pipeline(subject).design.command = command;
+    pipeline(subject).design.files_in = pipeline(subject).import.files_out;
+    pipeline(subject).design.files_out = [root filesep glm_name filesep 'Yr.mat'];
+
+    % run GLM
+    command = 'limo_eeg(4,files_in)';
+    pipeline(subject).glm.command = command;
+    pipeline(subject).glm.files_in = pipeline(subject).import.files_out;
+    pipeline(subject).glm.files_out = [root filesep glm_name filesep 'Betas.mat'];
+end
+
+% if strcmp(option,'contrast only') || strcmp(option,'both')
+%     
+%     if ~exist('model','var')
+%         model.defaults.bootstrap = 0;
+%         model.defaults.tfce      = 0;
+%     end
+%     
+%     for subject = 1:length(batch_contrast.LIMO_files)
+%         command = 'limo_batch_contrast(files_in,opt.C)';
+%         pipeline(subject).n_contrast.command = command;
+%         pipeline(subject).n_contrast.files_in = batch_contrast.LIMO_files{subject};
+%         if iscell(batch_contrast.mat)
+%             pipeline(subject).n_contrast.opt.C = cell2mat(batch_contrast.mat);
+%         else
+%             pipeline(subject).n_contrast.opt.C = batch_contrast.mat;
+%         end
+%         
+%         if exist(batch_contrast.LIMO_files{subject},'file')
+%             sub_LIMO = load(batch_contrast.LIMO_files{subject});
+%             if ~isfield(sub_LIMO.LIMO,'contrast')
+%                 start = 0;
+%             else
+%                 start = length(sub_LIMO.LIMO.contrast);
+%             end
+%         else
+%             start = 0;
+%         end
+%         
+%         for c=1:size(batch_contrast.mat,1)
+%             name{c} = [fileparts(batch_contrast.LIMO_files{subject}) filesep 'con_' num2str(c+start) '.mat'];
+%         end
+%         pipeline(subject).n_contrast.files_out = name; % name{1};
+%         LIMO_files.con{subject} = name;
+%     end
+% end
+
+
+% if strcmp(option,'model specification') || strcmp(option,'both')
+N = size(model.set_files,1);
+LIMO_files.mat = LIMO_files.mat';
+LIMO_files.Beta = LIMO_files.Beta';
+remove_limo = zeros(1,N);
+% else
+%     N = length(batch_contrast.LIMO_files);
+% end
+procstatus = zeros(1,N);
+
+% if isfield(LIMO_files,'con')
+%     LIMO_files.con = LIMO_files.con';
+%     remove_con     = zeros(1,N);
+% else
+remove_con = 0;
+% end
+
+% allocate names
+for subject = 1:N
+    limopt{subject} = opt;
+    limopt{subject}.path_logs = [LIMO_files.LIMO filesep 'limo_batch_report' filesep glm_name filesep 'subject' num2str(subject)];
+end
+
+% limo_settings_script
+limo_settings.psom = 1;
+
+% if model.defaults.bootstrap ~= 0 || ~limo_settings.psom % debugging mode, serial analysis    
+%     for subject = 1:N 
+%         disp('--------------------------------')
+%         fprintf('processing model %g/%g \n',subject,N)
+%         disp('--------------------------------')
+%         
+%         psom_pipeline_debug(pipeline(subject));
+%         if strcmp(option,'contrast only')
+%             name = fileparts(batch_contrast.LIMO_files{subject}); %#ok<PFBNS,PFTUSW>
+%         else
+%             [~,name]=fileparts(model.set_files{subject}); %#ok<PFBNS>
+%         end
+%         sub = min(strfind(name,'sub-'));
+%         ses = min(strfind(name,'ses-'));
+%         und = strfind(name,'_');
+%         if ~isempty(sub) && ~isempty(ses) && ~isempty(und)
+%             try
+%                 sub_und = und(und>sub); ses_und = und(und>ses);
+%                 report{subject} = ['subject ' name(sub+4:sub+min(abs(sub_und-sub))-1) ' session ' name(ses+4:ses+min(abs(ses_und-ses))-1) ' processed'];
+%             catch
+%                 report{subject} = ['subject ' num2str(subject) ' processed'];
+%             end
+%         else
+%             report{subject} = ['subject ' num2str(subject) ' processed'];
+%         end
+%         procstatus(subject) = 1;
+%     end
+%     
+% else % parallel call to the pipeline
+%     limo_check_ppool
+
+%% PSOM 
+for subject = 1:N 
+    disp('--------------------------------')
+    fprintf('processing model %g/%g \n',subject,N)
+    disp('--------------------------------')
+        
+%         try
+            %%%%%%%%%%%%%%%%%% psom_run_pipeline %%%%%%%%%%%%%%%%%%%%%%%%%
+%             psom_run_pipeline(pipeline(subject),limopt{subject})
+        psompipeline = pipeline(subject);
+        psomopt = limopt{subject};
+        psom_gb_vars
+        name_pipeline = 'PIPE';
+        gb_name_structure = 'psomopt';
+        gb_list_fields    = {'flag_short_job_names' , 'nb_resub'       , 'type_restart' , 'flag_pause' , 'init_matlab'       , 'flag_update' , 'flag_debug' , 'path_search'       , 'restart' , 'shell_options'       , 'path_logs' , 'command_matlab' , 'flag_verbose' , 'mode'       , 'mode_pipeline_manager' , 'max_queued'       , 'qsub_options'       , 'time_between_checks' , 'nb_checks_per_point' , 'time_cool_down' };
+        gb_list_defaults  = {true                   , gb_psom_nb_resub , 'substring'    , true         , gb_psom_init_matlab , true          , false        , gb_psom_path_search , {}        , gb_psom_shell_options , NaN         , ''               , true           , gb_psom_mode , gb_psom_mode_pm         , gb_psom_max_queued , gb_psom_qsub_options , []                    , []                    , []               };
+        psom_set_defaults
+
+        if ~strcmp(psomopt.path_logs(end),filesep)
+            psomopt.path_logs = [psomopt.path_logs filesep];
+            path_logs = psomopt.path_logs;
+        end
+
+        if isempty(path_search)
+            path_search = path;
+            psomopt.path_search = path_search;
+        end
+
+        if isempty(psomopt.command_matlab)
+            if strcmp(gb_psom_language,'matlab')
+                psomopt.command_matlab = gb_psom_command_matlab;
+            else
+                psomopt.command_matlab = gb_psom_command_octave;
+            end
+        end
+
+        if strcmp(psomopt.mode,'session')
+            psomopt.max_queued = 1;
+            max_queued = 1;
+        end
+
+%             if max_queued == 0
+%                 switch psomopt.mode
+%                     case {'batch','background'}
+%                         if isempty(gb_psom_max_queued)
+%                             psomopt.max_queued = 1;
+%                             max_queued = 1;
+%                         else
+%                             psomopt.max_queued = gb_psom_max_queued;
+%                             max_queued = gb_psom_max_queued;
+%                         end
+%                     case {'session','qsub','msub','condor'}
+%                         if isempty(gb_psom_max_queued)
+%                             psomopt.max_queued = Inf;
+%                             max_queued = Inf;
+%                         else
+%                             psomopt.max_queued = gb_psom_max_queued;
+%                             max_queued = gb_psom_max_queued;
+%                         end
+%                 end % switch action
+%             end % default of max_queued
+
+            if ~ismember(psomopt.mode,{'session','background','batch','qsub','msub','condor'})
+                error('%s is an unknown mode of pipeline execution. Sorry dude, I must quit ...',psomopt.mode);
+            end
+
+%             switch psomopt.mode
+%                 case 'session'
+                if isempty(time_between_checks)
+                    time_between_checks = 0;
+                end
+                if isempty(nb_checks_per_point)
+                    nb_checks_per_point = Inf;
+                end
+%                 otherwise
+%                     if isempty(time_between_checks)
+%                         time_between_checks = 0;
+%                     end
+%                     if isempty(nb_checks_per_point)
+%                         nb_checks_per_point = 60;
+%                     end
+%             end
+
+            file_pipe_running = cat(2,path_logs,filesep,name_pipeline,'.lock');
+            file_logs = cat(2,path_logs,filesep,name_pipeline,'_history.txt');
+
+            % Initialize the logs folder
+            opt_init.path_logs      = psomopt.path_logs;
+            opt_init.path_search    = psomopt.path_search;
+            opt_init.command_matlab = psomopt.command_matlab;
+            opt_init.flag_verbose   = psomopt.flag_verbose;
+            opt_init.restart        = psomopt.restart;
+            opt_init.flag_update    = psomopt.flag_update;    
+            opt_init.flag_pause     = psomopt.flag_pause;
+            opt_init.type_restart   = psomopt.type_restart;
+            
+            if flag_debug
+                opt_init
+            end
+            
+            [tmp,flag_start] = psom_pipeline_init(psompipeline,opt_init);   
+            if ~flag_start, return; end
+            
+            % Run the pipeline manager
+            file_pipeline = cat(2,path_logs,filesep,name_pipeline,'.mat');
+            
+            opt_proc.mode                  = psomopt.mode;
+            opt_proc.mode_pipeline_manager = psomopt.mode_pipeline_manager;
+            opt_proc.max_queued            = psomopt.max_queued;
+            opt_proc.qsub_options          = psomopt.qsub_options;
+            opt_proc.shell_options         = shell_options;
+            opt_proc.command_matlab        = psomopt.command_matlab;
+            opt_proc.time_between_checks   = psomopt.time_between_checks;
+            opt_proc.nb_checks_per_point   = psomopt.nb_checks_per_point;
+            opt_proc.flag_short_job_names  = psomopt.flag_short_job_names;
+            opt_proc.flag_debug            = psomopt.flag_debug;
+            opt_proc.flag_verbose          = psomopt.flag_verbose;
+            opt_proc.init_matlab           = psomopt.init_matlab;
+            opt_proc.nb_resub              = psomopt.nb_resub;
+            
+            if flag_debug, opt_proc; end
+            
+            % Read the number of characters that are currently in the history
+%             if flag_verbose&&~strcmp(psomopt.mode_pipeline_manager,'session')
+%                 hf = fopen(file_logs,'r');
+%                 if hf~=-1
+%                     str_logs = fread(hf,Inf,'uint8=>char')';
+%                     nb_chars = ftell(hf);
+%                     fclose(hf);
+%                 else
+%                     nb_chars = 0;
+%                 end
+%             end
+            
+%%%%%%%%%%%%%%%%%%%%%%% psom_pipeline_process %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%             psom_pipeline_process(file_pipeline,opt_proc);
+        psompipeline2 = file_pipeline;
+        opt2 = opt_proc;
+
+        gb_name_structure = 'psomopt2';
+        gb_list_fields    = { 'flag_short_job_names' , 'nb_resub'       , 'flag_verbose' , 'init_matlab'       , 'flag_debug' , 'shell_options'       , 'command_matlab' , 'mode'    , 'mode_pipeline_manager' , 'max_queued' , 'qsub_options'       , 'time_between_checks' , 'nb_checks_per_point' , 'time_cool_down' };
+        gb_list_defaults  = { true                   , gb_psom_nb_resub , true           , gb_psom_init_matlab , true         , gb_psom_shell_options , ''               , 'session' , ''                      , 0            , gb_psom_qsub_options , []                    , []                    , []               };
+        psom_set_defaults
+
+        flag_verbose = flag_verbose || flag_debug;
+
+        if isempty(opt2.nb_resub)
+            switch opt2.mode
+                case {'session','batch','background'}
+                    opt2.nb_resub = 0;
+                    nb_resub = 0;
+                otherwise
+                    opt2.nb_resub = 1;
+                    nb_resub = 1;
+            end % switch action
+        end % default of max_queued
+
+        if isempty(time_between_checks)
+            opt2.time_between_checks = 0;
+            time_between_checks = 0;
+        end
+        if isempty(nb_checks_per_point)
+            opt2.nb_checks_per_point = Inf;
+            nb_checks_per_point = Inf;
+        end
+        if isempty(time_cool_down)
+            opt2.time_cool_down = 0;
+            time_cool_down = 0;
+        end
+
+        % generic messages
+        hat_qsub_o = sprintf('\n\n*****************\nOUTPUT QSUB\n*****************\n');
+        hat_qsub_e = sprintf('\n\n*****************\nERROR QSUB\n*****************\n');
+
+        % generating file names
+        [path_logs,name_pipeline,ext_pl] = fileparts(psompipeline2);
+        file_pipe_running   = [ path_logs filesep name_pipeline '.lock'               ];
+        file_pipe_log       = [ path_logs filesep name_pipeline '_history.txt'        ];
+        file_news_feed      = [ path_logs filesep name_pipeline '_news_feed.csv'        ];
+        file_manager_opt    = [ path_logs filesep name_pipeline '_manager_opt.mat'    ];
+        file_logs           = [ path_logs filesep name_pipeline '_logs.mat'           ];
+        file_logs_backup    = [ path_logs filesep name_pipeline '_logs_backup.mat'    ];
+        file_status         = [ path_logs filesep name_pipeline '_status.mat'         ];
+        file_status_backup  = [ path_logs filesep name_pipeline '_status_backup.mat'  ];
+        file_jobs           = [ path_logs filesep name_pipeline '_jobs.mat'           ];
+        file_profile        = [ path_logs filesep name_pipeline '_profile.mat'        ];
+        file_profile_backup = [ path_logs filesep name_pipeline '_profile_status.mat' ];
+
+        logs    = load( file_logs    );
+        status  = load( file_status  );
+        profile = load( file_profile );
+
+        path_tmp = [path_logs filesep 'tmp'];
+        if exist(path_tmp,'dir')
+            delete([path_tmp '*']);
+        else
+            mkdir(path_tmp);
+        end
+
+        % Create a running tag on the pipeline (if not done during the initialization phase)
+        str_now = datestr(clock);
+        save(file_pipe_running,'str_now');
+
+        % open the log file
+        hfpl = fopen(file_pipe_log,'a');
+
+        % Open the news feed file
+        hfnf = fopen(file_news_feed,'w');
+
+        % Print general info about the pipeline
+%         msg_line1 = sprintf('The pipeline %s is now being processed.',name_pipeline);
+%         msg_line2 = sprintf('Started on %s',datestr(clock));
+%         msg_line3 = sprintf('user: %s, host: %s, system: %s',gb_psom_user,gb_psom_localhost,gb_psom_OS);
+%         size_msg = max([size(msg_line1,2),size(msg_line2,2),size(msg_line3,2)]);
+%         msg = sprintf('%s\n%s\n%s',msg_line1,msg_line2,msg_line3);
+%         stars = repmat('*',[1 size_msg]);    
+%         sub_add_line_log(hfpl,sprintf('\n%s\n%s\n%s\n',stars,msg,stars),flag_verbose);
+    
+        % Load the pipeline
+        load(psompipeline2,'list_jobs','graph_deps','files_in');                
+        
+        % Update dependencies
+        mask_finished = false([length(list_jobs) 1]);
+        for num_j = 1:length(list_jobs)
+            mask_finished(num_j) = strcmp(status.(list_jobs{num_j}),'finished');
+        end
+        graph_deps(mask_finished,:) = 0;
+        mask_deps = max(graph_deps,[],1)>0;
+        mask_deps = mask_deps(:);
+        
+        % Track number of submissions
+        nb_sub = zeros([length(list_jobs) 1]);
+    
+        % Initialize the to-do list
+        mask_todo = false([length(list_jobs) 1]);
+        for num_j = 1:length(list_jobs)
+            mask_todo(num_j) = strcmp(status.(list_jobs{num_j}),'none');
+            if ~mask_todo(num_j)
+                sub_add_line_log(hfnf,sprintf('%s , finished\n',list_jobs{num_j}),false);
+            end
+        end    
+        mask_done = ~mask_todo;
+    
+        mask_failed = false([length(list_jobs) 1]);
+        for num_j = 1:length(list_jobs)
+            mask_failed(num_j) = strcmp(status.(list_jobs{num_j}),'failed');
+            if mask_failed(num_j)
+                sub_add_line_log(hfnf,sprintf('%s , failed\n',list_jobs{num_j}),false);
+            end
+        end    
+        list_num_failed = find(mask_failed);
+        list_num_failed = list_num_failed(:)';
+        for num_j = list_num_failed
+            mask_child = false([1 length(mask_todo)]);
+            mask_child(num_j) = true;
+            mask_child = sub_find_children(mask_child,graph_deps);
+            mask_todo(mask_child) = false; % Remove the children of the failed job from the to-do list
+        end    
+        mask_running = false(size(mask_done));
+    
+        % Initialize miscallenaous variables
+        nb_queued   = 0;                   % Number of queued jobs
+        nb_todo     = sum(mask_todo);      % Number of to-do jobs
+        nb_finished = sum(mask_finished);  % Number of finished jobs
+        nb_failed   = sum(mask_failed);    % Number of failed jobs
+        nb_checks   = 0;                   % Number of checks to print a points
+        nb_points   = 0;                   % Number of printed points
+    
+        lmax = 0;
+        for num_j = 1:length(list_jobs)
+            lmax = max(lmax,length(list_jobs{num_j}));
+        end   
+    
+    % GLM HAPPENS HERE
+    while (any(mask_todo) || any(mask_running)) && psom_exist(file_pipe_running)
+
+        % Update logs & status
+        save(file_logs           ,'-struct','logs');
+        copyfile(file_logs,file_logs_backup,'f');        
+        save(file_status         ,'-struct','status');
+        copyfile(file_status,file_status_backup,'f');
+        save(file_profile        ,'-struct','profile');
+        copyfile(file_profile,file_profile_backup,'f');
+        flag_nothing_happened = true;
+        
+        % Update the status of running jobs
+        list_num_running = find(mask_running);
+        list_num_running = list_num_running(:)';
+        list_jobs_running = list_jobs(list_num_running);
+        new_status_running_jobs = psom_job_status(path_logs,list_jobs_running,opt2.mode);        
+        pause(time_cool_down); % pause for a while to let the system finish to write eqsub and oqsub files (useful in 'qsub' mode).
+        
+        % Loop over running jobs to check the new status
+        num_l = 0;
+        for num_j = list_num_running
+            num_l = num_l+1;
+            name_job = list_jobs{num_j};
+            flag_changed = ~strcmp(status.(name_job),new_status_running_jobs{num_l});
+            
+            if flag_changed
+                
+                if flag_nothing_happened % if nothing happened before...
+                    % Reset the 'dot counter'
+                    flag_nothing_happened = false;
+                    nb_checks = 0;
+                    if nb_points>0
+                        sub_add_line_log(hfpl,sprintf('\n'),flag_verbose);
+                    end
+                    nb_points = 0;
+                end
+                
+                % update status of the job in the status file                
+                status.(name_job) = new_status_running_jobs{num_l};
+                
+                if strcmp(status.(name_job),'exit') % the script crashed ('exit' tag)
+                    sub_add_line_log(hfpl,sprintf('%s - The script of job %s terminated without generating any tag, I guess we will count that one as failed.\n',datestr(clock),name_job),flag_verbose);
+                    status.(name_job) = 'failed';
+                    nb_failed = nb_failed + 1;
+                end
+                
+                if strcmp(status.(name_job),'failed')||strcmp(status.(name_job),'finished')
+                    % for finished or failed jobs, transfer the individual
+                    % test log files to the matlab global logs structure
+                    nb_queued = nb_queued - 1;
+                    text_log    = sub_read_txt([path_logs filesep name_job '.log']);
+                    text_qsub_o = sub_read_txt([path_logs filesep name_job '.oqsub']);
+                    text_qsub_e = sub_read_txt([path_logs filesep name_job '.eqsub']);                    
+                    if isempty(text_qsub_o)&&isempty(text_qsub_e)
+                        logs.(name_job) = text_log;                        
+                    else
+                        logs.(name_job) = [text_log hat_qsub_o text_qsub_o hat_qsub_e text_qsub_e];
+                    end
+                    % Update profile for the jobs
+                    file_profile_job = [path_logs filesep name_job '.profile.mat'];
+                    if psom_exist(file_profile_job)
+                        profile.(name_job) = load(file_profile_job);
+                    end
+                    profile.(name_job).nb_submit = nb_sub(num_j);
+                    sub_clean_job(path_logs,name_job); % clean up all tags & log                    
+                end
+                
+                switch status.(name_job)
+                    
+                    case 'failed' % the job has failed, too bad !
+
+                        if nb_sub(num_j) > nb_resub % Enough attempts to submit the jobs have been made, it failed !
+                            nb_failed = nb_failed + 1;   
+                            msg = sprintf('%s %s%s failed   ',datestr(clock),name_job,repmat(' ',[1 lmax-length(name_job)]));
+                            sub_add_line_log(hfpl,sprintf('%s (%i run / %i fail / %i done / %i left)\n',msg,nb_queued,nb_failed,nb_finished,nb_todo),flag_verbose);
+                            sub_add_line_log(hfnf,sprintf('%s , failed\n',name_job),false);
+                            mask_child = false([1 length(mask_todo)]);
+                            mask_child(num_j) = true;
+                            mask_child = sub_find_children(mask_child,graph_deps);
+                            mask_todo(mask_child) = false; % Remove the children of the failed job from the to-do list
+                        else % Try to submit the job one more time (at least)
+                            mask_todo(num_j) = true;
+                            status.(name_job) = 'none';
+                            new_status_running_jobs{num_l} = 'none';
+                            nb_todo = nb_todo+1;
+                            msg = sprintf('%s %s%s reset    ',datestr(clock),name_job,repmat(' ',[1 lmax-length(name_job)]));
+                            sub_add_line_log(hfpl,sprintf('%s (%i run / %i fail / %i done / %i left)\n',msg,nb_queued,nb_failed,nb_finished,nb_todo),flag_verbose);
+                        end
+
+                    case 'finished'
+
+                        nb_finished = nb_finished + 1;                        
+                        msg = sprintf('%s %s%s completed',datestr(clock),name_job,repmat(' ',[1 lmax-length(name_job)]));
+                        sub_add_line_log(hfpl,sprintf('%s (%i run / %i fail / %i done / %i left)\n',msg,nb_queued,nb_failed,nb_finished,nb_todo),flag_verbose);
+                        sub_add_line_log(hfnf,sprintf('%s , finished\n',name_job),false);
+                        graph_deps(num_j,:) = 0; % update dependencies
+
+                end
+                
+            end % if flag changed
+        end % loop over running jobs
+        
+        if ~flag_nothing_happened % if something happened ...
+            
+            % update the to-do list
+            mask_done(mask_running) = ismember(new_status_running_jobs,{'finished','failed','exit'});
+            mask_todo(mask_running) = mask_todo(mask_running)&~mask_done(mask_running);
+            
+            % Update the dependency mask
+            mask_deps = max(graph_deps,[],1)>0;
+            mask_deps = mask_deps(:);
+            
+            % Finally update the list of currently running jobs
+            mask_running(mask_running) = mask_running(mask_running)&~mask_done(mask_running);
+            
+        end
+        
+        % Time to (try to) submit jobs !!
+        list_num_to_run = find(mask_todo&~mask_deps);
+        num_jr = 1;
+        
+        while (nb_queued < max_queued) && (num_jr <= length(list_num_to_run))
+            
+            if flag_nothing_happened % if nothing happened before...
+                % Reset the 'dot counter'
+                flag_nothing_happened = false;
+                nb_checks = 0;
+                if nb_points>0                    
+                    sub_add_line_log(hfpl,sprintf('\n'),flag_verbose);
+                end
+                nb_points = 0;
+            end
+            
+            % Pick up a job to run
+            num_job = list_num_to_run(num_jr);
+            num_jr = num_jr + 1;
+            name_job = list_jobs{num_job};
+            
+            mask_todo(num_job) = false;
+            mask_running(num_job) = true;
+            nb_queued = nb_queued + 1;
+            nb_todo = nb_todo - 1;
+            nb_sub(num_job) = nb_sub(num_job)+1;
+            status.(name_job) = 'submitted';
+            msg = sprintf('%s %s%s submitted',datestr(clock),name_job,repmat(' ',[1 lmax-length(name_job)]));            
+            sub_add_line_log(hfpl,sprintf('%s (%i run / %i fail / %i done / %i left)\n',msg,nb_queued,nb_failed,nb_finished,nb_todo),flag_verbose);
+            sub_add_line_log(hfnf,sprintf('%s , submitted\n',name_job),false);
+            
+            % Execute the job in a "shelled" environment
+            file_job        = [path_logs filesep name_job '.mat'];
+            opt_logs.txt    = [path_logs filesep name_job '.log'];
+            opt_logs.eqsub  = [path_logs filesep name_job '.eqsub'];
+            opt_logs.oqsub  = [path_logs filesep name_job '.oqsub'];
+            opt_logs.failed = [path_logs filesep name_job '.failed'];
+            opt_logs.exit   = [path_logs filesep name_job '.exit'];
+            opt_script.path_search    = psompipeline2;
+            opt_script.name_job       = name_job;
+            opt_script.mode           = opt2.mode;
+            opt_script.init_matlab    = opt2.init_matlab;
+            opt_script.flag_debug     = opt2.flag_debug;        
+            opt_script.shell_options  = opt2.shell_options;
+            opt_script.command_matlab = opt2.command_matlab;
+            opt_script.qsub_options   = opt2.qsub_options;
+            opt_script.flag_short_job_names = opt2.flag_short_job_names;
+            opt_script.file_handle    = hfpl;
+            cmd = sprintf('psom_run_job(''%s'')',file_job);
+                
+            if ispc % this is windows
+                script = [path_tmp filesep name_job '.bat'];
+            else
+                script = [path_tmp filesep name_job '.sh'];
+            end
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%% psom_run_script %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%             [flag_failed,errmsg] = psom_run_script(cmd,script,opt_script,opt_logs);
+%             [flag_failed,msg] = psom_run_script(cmd,script,opt,logs)
+            cmd3 = cmd;
+            script3 = script;
+            opt3 = opt_script;
+            logs3 = opt_logs;
+
+            list_fields    = { 'flag_short_job_names' , 'path_search'       , 'file_handle' , 'name_job'    , 'init_matlab'       , 'flag_debug' , 'shell_options'       , 'command_matlab' , 'mode' , 'qsub_options'       };
+            list_defaults  = { true                   , gb_psom_path_search , []            , 'psom_script' , gb_psom_init_matlab , false        , gb_psom_shell_options , ''               , NaN    , gb_psom_qsub_options };
+            opt3 = psom_struct_defaults(opt3,list_fields,list_defaults);
+            
+%             if opt3.flag_debug
+%                 msg = sprintf('\n    The execution mode is %s\n',opt3.mode);
+%                 fprintf(msg);
+%                 if ~isempty(opt3.file_handle)
+%                     fprintf(opt3.file_handle,'%s',msg);
+%                 end
+%             end
+            
+%             if isempty(opt3.path_search)
+%                 opt3.path_search = path;
+%             end
+            
+%             if ~isempty(opt3.init_matlab)&&~ismember(opt3.init_matlab(end),{',',';'})
+%                 opt3.init_matlab = [opt3.init_matlab ','];
+%             end
+
+%             if isempty(opt3.command_matlab)
+%                 if strcmp(gb_psom_language,'matlab')
+%                     opt3.command_matlab = gb_psom_command_matlab;
+%                 else
+%                     opt3.command_matlab = gb_psom_command_octave;
+%                 end
+%             end
+
+%             % Logs
+%             if nargin < 4
+%                 opt_logs = [];
+%             else
+%                 list_fields   = { 'txt' , 'eqsub' , 'oqsub' , 'failed' , 'exit' };
+%                 if ismember(psomopt3.mode,{'qsub','msub','condor'})
+%                     list_defaults = { NaN   , NaN     , NaN     , NaN    , ''     };
+%                 else
+%                     list_defaults = { NaN   , ''      , ''      , ''     , ''     };
+%                 end
+%                 opt_logs = psom_struct_defaults(opt_logs,list_fields,list_defaults);
+%             end
+
+% % Check that the execution mode exists
+% if ~ismember(opt3.mode,{'session','background','batch','qsub','msub','condor'})
+%     error('%s is an unknown mode of command execution. Sorry dude, I must quit ...',opt3.mode);
+% end
+
+% Generate the script
+% Generate some OS-appropriate options to start Matlab/Octave
+% switch gb_psom_language
+%     case 'matlab'
+%         if ispc
+            opt_matlab = '-automation -nodesktop -r';
+%         else
+%             opt_matlab = '-nosplash -nodesktop -r';
+%         end        
+%     case 'octave'
+%         opt_matlab = '--silent --eval';       
+% end
+
+% Set-up the search path for the job
+% if ~strcmp(opt3.mode,'session')&&~isempty(cmd)
+%     if (length(opt3.path_search)>4)&&(strcmp(opt3.path_search(end-3:end),'.mat'))
+%         file_path = opt3.path_search;
+%     else
+%         [path_f,name_f] = fileparts(script);
+%         file_path = fullfile(path_f,[name_f '_path.mat']);
+%         path_work = opt3.path_search;
+%         save(file_path,'path_work');
+%     end 
+%     opt3.init_matlab = [sprintf('load(''%s'',''path_work''), if ~ismember(path_work,{''gb_niak_omitted'',''gb_psom_omitted''}), path(path_work), end,',file_path) opt3.init_matlab];
+% else
+    file_path = '';
+% end
+        
+% Add an appropriate call to Matlab/Octave
+% if ~isempty(cmd)            
+    instr_job = sprintf('"%s" %s "%s %s,exit"',opt3.command_matlab,opt_matlab,opt3.init_matlab,cmd);
+%     if ~isempty(opt_logs)
+%         if opt3.flag_debug
+%             instr_job = sprintf('%s >"%s" 2>&1\n',instr_job,opt_logs.txt);
+%         else
+            instr_job = sprintf('%s >"%s"\n',instr_job,opt_logs.txt);
+%         end
+%     else
+%         instr_job = sprintf('%s\n',instr_job);
+%     end
+% else
+%     instr_job = '';
+% end
+        
+% Add shell options
+% if ~isempty(opt3.shell_options)
+%     instr_job = sprintf('%s\n%s',opt3.shell_options,instr_job);
+% end    
+
+% Add a .exit tag file
+% if ~isempty(opt_logs)&&~isempty(opt_logs.exit)
+%     if ispc % this is windows
+        instr_job = sprintf('%stype nul > "%s"\nexit\n',instr_job,opt_logs.exit);
+%     else
+%         instr_job = sprintf('%stouch "%s"',instr_job,opt_logs.exit);
+%     end
+% else
+%     if ispc
+%         instr_job = sprintf('%sexit\n',instr_job);
+%     end
+% end
+
+% Write the script
+% if ~strcmp(opt3.mode,'session')            
+%     if opt3.flag_debug
+%         msg = sprintf('    This is the content of the script used to run the command :\n"\n%s\n"\n',instr_job);
+%         if ~strcmp(opt3.path_search,'gb_niak_omitted')&&~isempty(cmd)
+%             msg = sprintf('%s    The following matlab search path is used (may be truncated):\n%s\n',msg,opt3.path_search(1:min(100,length(opt3.path_search))));
+%             msg = sprintf('%s    The search path will be loaded from the following file:\n%s\n',msg,file_path);
+%         end
+%         fprintf('%s',msg);
+%         if ~isempty(opt3.file_handle)
+%             fprintf(opt3.file_handle,'%s',msg);
+%         end
+%     end
+%     
+%     hf = fopen(script,'w');
+%     fprintf(hf,'%s',instr_job);
+%     fclose(hf);
+% else
+%     if opt3.flag_debug
+%         msg = sprintf('    The following command is going to be executed :\n%s\n\n',cmd);
+%         fprintf('%s',msg);
+%         if ~isempty(opt3.file_handle)
+%             fprintf(opt3.file_handle,'%s',msg);
+%         end
+%     end
+% end
+
+% Execute the script 
+% switch opt3.mode
+% 
+%     case 'session'
+
+        try
+            if ~isempty(opt_logs)
+                diary(opt_logs.txt);
+                eval([ cmd ';' ])  %%%%%%%%%% ====> HAPPENS HERE %%%%%%%
+                %%%%%%%%%%%%%%%%%% psom_run_job %%%%%%%%%%%%%%%%%%%%%%%%
+%                 psom_run_job('G:\My Drive\HLM\limo\derivatives\LIMO_test\limo_batch_report\test_design1_GLM_Channels_Frequency_WLS\subject1\\import.mat')
+                
+%          1) IMPORT line 128 with sub_eval --> limo_batch_import_data(set_files,opt.cat,opt.cont,opt.defaults)
+%           find what is called for 2) design and 3) GLM (same line in psom_run_job)
+
+
+                %%%%%%%%%%%%%%%%% end of psom_run_job %%%%%%%%%%%%%%%%%%
+                diary off;
+            else
+                sub_eval([ cmd ';' ]);
+            end
+            flag_failed = false;
+            msg = '';
+        catch
+            flag_failed = true;
+            errmsg = lasterror;
+            msg = errmsg.message;
+            if isfield(errmsg,'stack')
+                for num_e = 1:length(errmsg.stack)
+                    msg = sprintf('%s\nFile %s at line %i\n',msg,errmsg.stack(num_e).file,errmsg.stack(num_e).line);
+                end           
+            end
+        end
+        if ~isempty(opt_logs.exit)
+            save(opt_logs.exit,'flag_failed')
+        end
+
+%     case 'background'
+% 
+%        if ispc
+%             cmd_script = ['"' script '"']; % /min instead of /b ?
+%        else
+%             cmd_script = ['. "' script '"'];
+%        end
+% 
+%        if opt3.flag_debug
+%            if strcmp(gb_psom_language,'octave')
+%                cmd_script = [cmd_script ' 2>&1']; % In octave, the error stream is lost. Redirect it to standard output
+%            end
+%            msg = sprintf('    The script is executed using the command :\n%s\n\n',cmd_script);
+%            fprintf('%s',msg);
+%            if ~isempty(opt3.file_handle)
+%                fprintf(opt3.file_handle,'%s',msg);
+%            end
+%            [flag_failed,msg] = system(cmd_script);
+%        else
+%            if strcmp(gb_psom_language,'octave')
+%                system(cmd_script,false,'async');
+%                flag_failed = 0;
+%            else 
+%                flag_failed = system([cmd_script ' &']);
+%            end
+%            msg = '';
+%        end
+% 
+%     case 'batch'
+% 
+%         if ispc
+%             instr_batch = sprintf('start /min "%s" "%s"',opt3.name_job,script); 
+%         else
+%             instr_batch = ['at -f "' script '" now'];
+%         end
+%         if strcmp(gb_psom_language,'octave')
+%             instr_batch = [instr_batch ' 2>&1']; % In octave, the error stream is lost. Redirect it to standard output
+%         end
+%         if opt3.flag_debug 
+%             msg = sprintf('    The script is executed using the command :\n%s\n\n',instr_batch);
+%             fprintf('%s',msg);
+%             if ~isempty(opt3.file_handle)
+%                 fprintf(opt3.file_handle,'%s',msg);
+%             end
+%         end
+%         [flag_failed,msg] = system(instr_batch);    
+%         
+%     case {'qsub','msub','condor'}
+%         script_submit = [gb_psom_path_psom 'psom_submit.sh'];
+%         switch opt3.mode
+%             case {'qsub','msub'}
+%                 sub = opt3.mode;
+%             case 'condor'
+%                 sub = [gb_psom_path_psom 'psom_condor.sh'];
+%         end
+%         if ~isempty(opt_logs)
+%             qsub_logs = [' -e \"' opt_logs.eqsub '\" -o \"' opt_logs.oqsub '\"'];
+%         else 
+%             qsub_logs = '';
+%         end
+%         if opt3.flag_short_job_names
+%             name_job = opt3.name_job(1:min(length(opt3.name_job),8));
+%         else
+%             name_job = opt3.name_job;
+%         end
+%         instr_qsub = sprintf('%s%s -N %s %s %s',sub,qsub_logs,name_job,opt3.qsub_options,['\"' script '\"']);            
+%         if ~isempty(opt_logs)
+%             instr_qsub = [script_submit ' "' instr_qsub '" ' opt_logs.failed ' ' opt_logs.exit ' ' opt_logs.oqsub ];
+%         end
+%         if opt3.flag_debug
+%             if strcmp(gb_psom_language,'octave')
+%                 instr_qsub = [instr_qsub ' 2>&1']; % In octave, the error stream is lost. Redirect it to standard output
+%             end
+%             msg = sprintf('    The script is executed using the command :\n%s\n\n',instr_qsub);
+%             fprintf('%s',msg);
+%             if ~isempty(opt3.file_handle)
+%                 fprintf(opt3.file_handle,'%s',msg);
+%             end
+%             [flag_failed,msg] = system(instr_qsub);
+%         else 
+%             if strcmp(gb_psom_language,'octave')
+%                 system([instr_qsub ' > /dev/null'],false,'async');
+%                 flag_failed = 0;
+%             else
+%                 flag_failed = system([instr_qsub ' > /dev/null &']);
+%             end
+%             msg = '';
+%         end
+% end
+
+
+
+
+
+            %%%%%%%%%%%%%%%%%%%%%%% end of psom_run_script %%%%%%%%%%%%%%%%%%%%%%%
+
+            if flag_failed~=0
+                msg = fprintf('\n    The execution of the job %s failed.\n The feedback was : %s\n',name_job,errmsg);
+                sub_add_line_log(hfpl,msg,true);
+                error('Something went bad with the execution of the job.')
+            elseif flag_debug
+                msg = fprintf('\n    The feedback from the execution of job %s was : %s\n',name_job,errmsg);
+                sub_add_line_log(hfpl,msg,true);
+            end            
+        end % submit jobs
+        
+        if (any(mask_todo) || any(mask_running)) && psom_exist(file_pipe_running)
+            pause(time_between_checks); % To avoid wasting resources, wait a bit before re-trying to submit jobs
+        end
+                
+        if nb_checks >= nb_checks_per_point
+            nb_checks = 0;
+            if flag_verbose
+                fprintf('.');
+            end
+            sub_add_line_log(hfpl,sprintf('.'),flag_verbose);
+            nb_points = nb_points+1;
+        else
+            nb_checks = nb_checks+1;
+        end
+        
+    end % While there are jobs to do
+    
+% catch
+%     
+%     errmsg = lasterror;        
+%     sub_add_line_log(hfpl,sprintf('\n\n******************\nSomething went bad ... the pipeline has FAILED !\nThe last error message occured was :\n%s\n',errmsg.message),flag_verbose);
+%     if isfield(errmsg,'stack')
+%         for num_e = 1:length(errmsg.stack)
+%             sub_add_line_log(hfpl,sprintf('File %s at line %i\n',errmsg.stack(num_e).file,errmsg.stack(num_e).line),flag_verbose);
+%         end
+%     end
+%     if exist('file_pipe_running','var')
+%         if exist(file_pipe_running,'file')
+%             delete(file_pipe_running); % remove the 'running' tag
+%         end
+%     end
+%     
+%     %% Close the log file
+%     if strcmp(gb_psom_language,'matlab')
+%         fclose(hfpl);
+%         fclose(hfnf);
+%     end
+%     return
+% end
+
+Update the final status
+save(file_logs           ,'-struct','logs');
+copyfile(file_logs,file_logs_backup,'f');
+save(file_status         ,'-struct','status');
+copyfile(file_status,file_status_backup,'f');
+save(file_profile        ,'-struct','profile');
+copyfile(file_profile,file_profile_backup,'f');
+
+Print general info about the pipeline
+msg_line1 = sprintf('The processing of the pipeline is terminated.');
+msg_line2 = sprintf('See report below for job completion status.');
+msg_line3 = sprintf('%s',datestr(now));
+size_msg = max([size(msg_line1,2),size(msg_line2,2)]);
+msg = sprintf('%s\n%s\n%s',msg_line1,msg_line2,msg_line3);
+stars = repmat('*',[1 size_msg]);
+sub_add_line_log(hfpl,sprintf('\n%s\n%s\n%s\n',stars,msg,stars),flag_verbose);
+
+Report if the lock file was manually removed
+if exist('file_pipe_running','var')
+    if ~exist(file_pipe_running,'file')
+        sub_add_line_log(hfpl,sprintf('The pipeline manager was interrupted because the .lock file was manually deleted.\n'),flag_verbose);
+    end    
+end
+
+% Print a list of failed jobs
+mask_failed = false([length(list_jobs) 1]);
+for num_j = 1:length(list_jobs)
+    mask_failed(num_j) = strcmp(status.(list_jobs{num_j}),'failed');
+end
+mask_todo = false([length(list_jobs) 1]);
+for num_j = 1:length(list_jobs)
+    mask_todo(num_j) = strcmp(status.(list_jobs{num_j}),'none');
+end
+list_num_failed = find(mask_failed);
+list_num_failed = list_num_failed(:)';
+list_num_none = find(mask_todo);
+list_num_none = list_num_none(:)';
+flag_any_fail = ~isempty(list_num_failed);
+
+if flag_any_fail
+    if length(list_num_failed) == 1
+        sub_add_line_log(hfpl,sprintf('The execution of the following job has failed :\n\n    '),flag_verbose);
+    else
+        sub_add_line_log(hfpl,sprintf('The execution of the following jobs have failed :\n\n    '),flag_verbose);
+    end
+    for num_j = list_num_failed
+        name_job = list_jobs{num_j};        
+        sub_add_line_log(hfpl,sprintf('%s ; ',name_job),flag_verbose);
+    end    
+    sub_add_line_log(hfpl,sprintf('\n\n'),flag_verbose);
+    sub_add_line_log(hfpl,sprintf('More infos can be found in the individual log files. Use the following command to display these logs :\n\n    psom_pipeline_visu(''%s'',''log'',JOB_NAME)\n\n',path_logs),flag_verbose);
+end
+
+Print a list of jobs that could not be processed
+if ~isempty(list_num_none)
+    if length(list_num_none) == 1
+        sub_add_line_log(hfpl,sprintf('The following job has not been processed due to a dependence on a failed job or the interruption of the pipeline manager :\n\n    '),flag_verbose);
+    else
+        sub_add_line_log(hfpl,sprintf('The following jobs have not been processed due to a dependence on a failed job or the interruption of the pipeline manager :\n\n    '),flag_verbose);
+    end
+    for num_j = list_num_none
+        name_job = list_jobs{num_j};
+        sub_add_line_log(hfpl,sprintf('%s ; ',name_job),flag_verbose);
+    end    
+    sub_add_line_log(hfpl,sprintf('\n\n'),flag_verbose);
+end
+
+% Give a final one-line summary of the processing
+if flag_any_fail    
+    sub_add_line_log(hfpl,sprintf('All jobs have been processed, but some jobs have failed.\nYou may want to restart the pipeline latter if you managed to fix the problems.\n'),flag_verbose);
+else
+    if isempty(list_num_none)
+        sub_add_line_log(hfpl,sprintf('All jobs have been successfully completed.\n'),flag_verbose);
+    end
+end
+
+if ~strcmp(opt2.mode_pipeline_manager,'session')&& strcmp(gb_psom_language,'octave')   
+    sub_add_line_log(hfpl,sprintf('Press CTRL-C to go back to Octave.\n'),flag_verbose);
+end
+
+% Close the log file
+if strcmp(gb_psom_language,'matlab')
+    fclose(hfpl);
+    fclose(hfnf);
+end
+
+if exist('file_pipe_running','var')
+    if exist(file_pipe_running,'file')
+        delete(file_pipe_running); % remove the 'running' tag
+    end
+end
+
+if strcmp(opt2.mode,'session')&&strcmp(opt2.mode_pipeline_manager,'session')&&flag_any_fail
+    error('All jobs have been processed, but some jobs have failed. You may want to restart the pipeline latter if you managed to fix the problems.')
+end
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%% end of psom_pipeline_process %%%%%%%%%%%%%%%%
+
+            %% If not in session mode, monitor the output of the pipeline
+            if flag_verbose&&~strcmp(opt2.mode_pipeline_manager,'session')
+                psom_pipeline_visu(path_logs,'monitor',nb_chars);
+            end            
+%%%%%%%%%%%%%%%%%%% end of psom_run_pipeline %%%%%%%%%%%%%%%%
+
+
+            % example of debugging
+            % ---------------------
+            % psom reported with function failed, eg limo_batch_import
+            % pipeline(subject).import tells you the command line to test
+            % put the point brack where needed and call e.g.
+            % limo_batch_import_data(pipeline(subject).import.files_in,pipeline(subject).import.psomopt2.cat,pipeline(subject).import.psomopt2.cont,pipeline(subject).import.psomopt2.defaults)
+            % limo_batch_design_matrix(pipeline(subject).design.files_in)
+            % limo_eeg(4,fileparts(pipeline(subject).glm.files_in))
+            % limo_batch_contrast(pipeline(subject).n_contrast.files_in,pipeline(subject).n_contrast.psomopt2.C)
+            
+            if strcmp(option,'contrast only')
+                name = fileparts(batch_contrast.LIMO_files{subject}); %#ok<PFBNS,PFTUSW>
+            else
+                [~,name]=fileparts(model.set_files{subject}); %#ok<PFBNS>
+            end
+            sub = min(strfind(name,'sub-'));
+            ses = min(strfind(name,'ses-'));
+            und = strfind(name,'_');
+            
+            if ~isempty(sub) && ~isempty(ses) && ~isempty(und)
+                try
+                    sub_und = und(und>sub); ses_und = und(und>ses);
+                    if strcmp(option,'contrast only')
+                        report{subject} = ['subject ' name(sub:sub+min(abs(sub_und-sub))-1) ' processed'];
+                    else
+                        report{subject} = ['subject ' name(sub+4:sub+min(abs(sub_und-sub))-1) ' session ' name(ses+4:ses+min(abs(ses_und-ses))-1) ' processed'];
+                    end
+                catch
+                    report{subject} = ['subject ' num2str(subject) ' processed'];
+                end
+            else
+                report{subject} = ['subject ' num2str(subject) ' processed'];
+            end
+            procstatus(subject) = 1;
+%         catch ME
+%             report{subject} = sprintf('subject %g failed: %s',subject,ME.message');
+%             if strcmp(option,'model specification')
+%                 remove_limo(subject) = 1;
+%             elseif strcmp(option,'both')
+%                 remove_limo(subject) = 1;
+%                 remove_con(subject) = 1;
+%             elseif strcmp(option,'contrast only')
+%                 remove_con(subject) = 1;
+%             end
+%         end
+%     end
+% end
+
+% Save txt files
+% save as txt file the list of .set, Betas, LIMO and con
+% these lists can then be used in second level analyses
+cd(LIMO_files.LIMO)
+
+if strcmp(option,'model specification') || strcmp(option,'both')
+    if ~all(remove_limo)
+        cell2csv([LIMO_files.LIMO filesep 'LIMO_files_' glm_name '.txt'], LIMO_files.mat(find(~remove_limo),:))
+        cell2csv([LIMO_files.LIMO filesep 'Beta_files_' glm_name '.txt'], LIMO_files.Beta(find(~remove_limo),:))
+    end
+end
+
+if strcmp(option,'contrast only') || strcmp(option,'both')
+    for c=1:size(batch_contrast.mat,1)
+        index = 1; clear name
+        for subject = 1:N
+            if strcmp(option,'contrast only')
+                LIMO = load([fileparts(pipeline(subject).n_contrast.files_in) filesep 'LIMO.mat']); LIMO = LIMO.LIMO;
+                if isfield(LIMO,'contrast')
+                    con_num = max(find(cellfun(@(x) isequal(x.C,limo_contrast_checking(LIMO.dir,LIMO.design.X,batch_contrast.mat(c,:))),LIMO.contrast))); % if several identical contrasts, take max
+                else
+                    con_num = c;
+                end
+                name{index} = [fileparts(pipeline(subject).n_contrast.files_in) filesep 'con_' num2str(con_num) '.mat'];
+            else
+                name{index} = [fileparts(pipeline(subject).glm.files_out) filesep 'con_' num2str(c) '.mat'];
+                con_num = c;
+            end
+            index = index + 1;
+        end
+        name = name';
+        
+        if ~all(remove_con)
+            cell2csv([LIMO_files.LIMO filesep 'con_' num2str(con_num) '_files_' glm_name '.txt'], name(find(~remove_con),:));
+        end
+    end
+end
+
+% save the report from psom
+cell2csv([LIMO_files.LIMO filesep 'limo_batch_report' filesep 'batch_report_' glm_name '.txt'], report')
+
+cd(current);
+failed = zeros(1,N);
+for subject=1:N
+    if strfind(report{subject},'failed')
+        failed(subject) = 1;
+    end
+end
+
+if sum(failed) == 0
+    disp('LIMO batch processing finished succesfully')
+else
+    if sum(failed) == N % all subjects
+        warning('LIMO batch done but all subjects failed')
+    else
+        warning('LIMO batch done, some errors where detected\ncheck limo batch report subjects %s',num2str(find(failed)))
+    end
+end
+
+% if EEGLAB STUDY check for groups and sessions 
+% and further export txt files
+if exist('STUDY','var')
+    try
+        if isfield(model, 'set_files')
+            cell2csv([LIMO_files.LIMO filesep 'EEGLAB_set_' glm_name '.txt'],model.set_files)
+        end
+        
+        if ~isempty(STUDY.datasetinfo(subject).session)
+            sesvalues = unique(arrayfun(@(x) x.session, STUDY.datasetinfo));
+        else
+            sesvalues = 1;
+        end
+        
+        % split txt files if more than 1 group or session
+        if length(STUDY.group) > 1 || length(sesvalues)>1
+            for s=1:length(sesvalues)
+                for g= 1:length(STUDY.group)
+                    if length(STUDY.group) > 1
+                        subset = arrayfun(@(x)(strcmpi(x.group,STUDY.group{g})), STUDY.datasetinfo);
+                    end
+                    
+                    if length(sesvalues) > 1
+                        sesset = arrayfun(@(x) x.session==s, STUDY.datasetinfo);
+                    end
+                    
+                    if isfield(LIMO_files,'mat') && isfield(LIMO_files,'Beta')
+                        if length(STUDY.group) > 1 && length(sesvalues)==1 % only groups
+                            if any(subset)
+                                cell2csv(fullfile(LIMO_files.LIMO, ['LIMO_files_Gp-' STUDY.group{g} '_' glm_name '.txt']), LIMO_files.mat(subset));
+                                cell2csv(fullfile(LIMO_files.LIMO, ['Beta_files_Gp-' STUDY.group{g} '_' glm_name '.txt']), LIMO_files.Beta(subset));
+                            end
+                        elseif length(STUDY.group) == 1 && length(sesvalues) > 1 % only sessions
+                            if any(sesset)
+                                cell2csv(fullfile(LIMO_files.LIMO, ['LIMO_files_ses-' num2str(s) '_' glm_name '.txt']), LIMO_files.mat(sesset));
+                                cell2csv(fullfile(LIMO_files.LIMO, ['Beta_files_ses-' num2str(s) '_' glm_name '.txt']), LIMO_files.Beta(sesset));
+                            end
+                        else % groups and sessions
+                            if any(subset.*sesset)
+                                cell2csv(fullfile(LIMO_files.LIMO, ['LIMO_files_ses-' num2str(s) '_Gp-' STUDY.group{g} '_' glm_name '.txt']), LIMO_files.mat(logical(subset.*sesset)));
+                                cell2csv(fullfile(LIMO_files.LIMO, ['Beta_files_ses-' num2str(s) '_Gp-' STUDY.group{g} '_' glm_name '.txt']), LIMO_files.Beta(logical(subset.*sesset)));
+                            end
+                        end
+                    end
+                    
+                    if isfield(LIMO_files,'con')
+                        if length(STUDY.group) > 1 && length(sesvalues)==1 % only groups
+                            tmpcell = LIMO_files.con(subset);
+                            if ~isempty(tmpcell{1})
+                                for c=1:length(tmpcell{1})
+                                    [~,con_name,~] = fileparts(LIMO_files.con{1}{c});
+                                    cell2csv(fullfile(LIMO_files.LIMO, [con_name '_files_Gp-' STUDY.group{g} '_' glm_name '.txt']),cellfun(@(x) x(c), tmpcell));
+                                end
+                            end
+                        elseif length(STUDY.group) == 1 && length(sesvalues) > 1 % only sessions
+                            tmpcell = LIMO_files.con(sesset);
+                            if ~isempty(tmpcell{1})
+                                for c=1:length(tmpcell{1})
+                                    [~,con_name,~] = fileparts(LIMO_files.con{1}{c});
+                                    cell2csv(fullfile(LIMO_files.LIMO, [con_name '_files_ses-' num2str(s) '_' glm_name '.txt']),cellfun(@(x) x(c), tmpcell));
+                                end
+                            end
+                        else
+                            tmpcell = LIMO_files.con(logical(subset.*sesset));
+                            if ~isempty(tmpcell)
+                                for c=1:length(tmpcell{1})
+                                    [~,con_name,~] = fileparts(LIMO_files.con{1}{c});
+                                    cell2csv(fullfile(LIMO_files.LIMO, [con_name '_files_ses-' num2str(s) '_Gp-' STUDY.group{g} '_' glm_name '.txt']),cellfun(@(x) x(c), tmpcell));
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    catch writtingerr
+        if sum(failed) == 0
+            warning(writtingerr.identifier,'all LIMO files created but failing to write some metadata txt files ''%s''\n ',writtingerr.message);
+        else
+            warning(writtingerr.identifier,'also failing to write some metadata txt files ''%s''\n ',writtingerr.message);
+        end
+    end
+end
+
+disp('LIMO batch works thanks to PSOM by Bellec et al. (2012)')
+disp('The Pipeline System for Octave and Matlab. Front. Neuroinform. 6:7')
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% end of limo_batch %%%%%%%%%%%%%%%%%%%%%%5
 % else
 %     contrast.mat = limocontrast;
 %     [LIMO_files, procstatus] = limo_batch('both',model,contrast,STUDY);
@@ -978,10 +2298,10 @@ if strcmpi(stattest,'paired t-test')
             % Minimum number of different trials/subjects.
             % lower variance means the stat values will be too high (see Pernet et al. 2014)
             Nmin = 3;
-            if size(data,3) <= Nmin
+            if size(data,3)-1 <= Nmin
                 error(['Not enough subjects in dataset - need at least ' num2str(Nmin) ' subjects']);
             end
-
+            
             % check data for NaNs
             if size(data,1) == 1, chdata = data(1,1,:); else, chdata = squeeze(data(:,1,:)); end
             if sum(sum(isnan(chdata),2)==size(data,ndims(data))) ~=0
@@ -1487,7 +2807,7 @@ elseif ~isempty(M) && MCC == 2
         % [mask,M] = limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p); % mask and cluster p values
 %     end
 
-    function mask = correct_cluster(M, Pval, bootM, bootP, neighbormatrix, MCC, p)
+    mask = correct_cluster(M, Pval, bootM, bootP, neighbormatrix, MCC, p);
 
     %%%%%%%%%%%%%%% end of limo_clustering %%%%%%%%%%%%%%%%%%%%%%%%
     Nclust   = unique(mask);

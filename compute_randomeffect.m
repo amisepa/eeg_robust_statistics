@@ -16,11 +16,11 @@
 
 function [results, results_H0] = compute_randomeffect(data1,data2,nboot,method)
 
-if ~exist(nboot,'var') || isempty(nboot)
+if ~exist('nboot','var') || isempty(nboot)
 	nboot = 1000;
 end
 
-if ~exist(method,'var') || isempty(method)
+if ~exist('method','var') || isempty(method)
 	method = 'trimmed mean';
 end
 
@@ -37,10 +37,11 @@ for iChan = 1:size(data1,1)
 
     if strcmpi(method,'trimmed Mean')
 		% ADD DETECTION IF DATA ARE DEPENDENT OR INDEPENDENT (DIFFERENT SIZE)
-        [tval, ~, ~, ~, pval, ~, ~] = yuend(y1,y2,20); 		% 20% trimmed means
+        [tval,~,~,~,pval,~,~] = limo_yuend_ttest(y1,y2,20,0.05);
+%         [tval, ~, ~, ~, ~, pval] = yuend(y1,y2,20,0.05); 		% 20% trimmed means
     elseif strcmpi(method,'mean')
 		% ADD DETECTION IF DATA ARE DEPENDENT OR INDEPENDENT (DIFFERENT SIZE)
-        [~, ~, ~, ~, ~, tval, pval] = limo_ttest(1,y1,y2,.05);
+        [~,~,~,~,~,tval,pval] = limo_ttest(1,y1,y2,.05);
     else
         errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
     end
@@ -92,16 +93,17 @@ for iChan = 1:size(data1,1)
     for b = 1:nboot
         if strcmpi(method,'trimmed Mean')
             % disp(['Estimating H0 using Yuen t-test for channel ' num2str(iChan)]);
-            [t, ~, ~, ~, p, ~, ~] = limo_yuend_ttest(y1(:,:,boot_table{iChan}(:,b)),y2(:,:,boot_table{iChan}(:,b)));
+            [tval, ~, ~, ~, pval, ~, ~] = limo_yuend_ttest(y1(:,:,boot_table{iChan}(:,b)),y2(:,:,boot_table{iChan}(:,b)));
+%             [tval, ~, ~, ~, ~, pval] = yuend(y1(:,:,boot_table{iChan}(:,b)),y2(:,:,boot_table{iChan}(:,b)),20,0.05);    % 20% trimmed means
         elseif strcmpi(method,'mean')
             % disp(['Estimating H0 using paired t-test on channel ' num2str(iChan)  '/' num2str(size(data1,1))]);
-			[~,~,~,~,~,t,p] = limo_ttest(1,y1(:,:,boot_table{iChan}(:,b)), y2(:,:,boot_table{iChan}(:,b)), 0.05);
+			[~,~,~,~,~,tval,pval] = limo_ttest(1,y1(:,:,boot_table{iChan}(:,b)), y2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test
         else
             errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
         end
 
-        results_H0(iChan,:,1,b) = t;
-        results_H0(iChan,:,2,b) = p;
+        results_H0(iChan,:,1,b) = tval;
+        results_H0(iChan,:,2,b) = pval;
 
         frac2 = b/nboot;
         frac1 = (iChan-1 + frac2) / size(data1,1);

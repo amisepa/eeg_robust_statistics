@@ -2,7 +2,7 @@
 % 
 % Cedric Cannard, Sep 2022
 
-function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh, fig)
+function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
 
 % [mask,M] = limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p); % for t-test only
 
@@ -12,14 +12,14 @@ tvals_H0 = tvals_H0.^2;
 
 % if 1 channel, force switch to 1D TFCE clustering
 if size(tvals,1) == 1
-    mcctype = 4; % TFCE 
+    mcctype = 3; % TFCE 
 end
 
 % nb of boostrap performed
 nboot = size(tvals_H0,3);      
 
 % spatiotemporal clustering
-if mcctype == 3 && size(tvals_H0,1) > 1
+if mcctype == 2 && size(tvals_H0,1) > 1
     minchan = 2; % the minimum number of neighbouring channels/combinations
     boot_maxclustersum = zeros(nboot,1);     % maximum cluster mass at each bootstrap
     disp('Getting spatiotemporal clusters under H0 ...');
@@ -129,10 +129,10 @@ if mcctype == 3 && size(tvals_H0,1) > 1
     % find clusters in the observed data
     [posclusterslabelmat,nposclusters] = limo_findcluster(pvals<=pthresh,neighbormatrix,minchan);
     
-    % get bootstrap parameters
-    nboot                              = length(boot_maxclustersum);
-    sort_clustermax                    = sort(boot_maxclustersum);
-    n                                  = sum(isnan(sort_clustermax)); 
+    % bootstrap parameters
+    nboot = length(boot_maxclustersum);
+    sort_clustermax = sort(boot_maxclustersum);
+    n = sum(isnan(sort_clustermax)); 
     
     % NaN present if there was no clusters under H0 - just warp around
     % should not happen if using limo_getclustersum as it returns 0 in that case
@@ -142,8 +142,8 @@ if mcctype == 3 && size(tvals_H0,1) > 1
         sort_clustermax(isnan(sort_clustermax))=[];
         sort_clustermax = [NaN(n,1); sort_clustermax];
     end
-    maxclustersum_th = sort_clustermax(round((1-pthresh)*nboot));
-    fprintf('cluster mass threshold: %g\n',maxclustersum_th)
+    max_th = sort_clustermax(round((1-pthresh)*nboot));
+    fprintf('cluster mass threshold: %g\n',max_th)
     
     % compute the mask: for each cluster do the sum and set significant if > maxclustersum_th
     mask = zeros(size(tvals));
@@ -151,7 +151,7 @@ if mcctype == 3 && size(tvals_H0,1) > 1
     if nposclusters~=0
         for C = nposclusters:-1:1 % compute cluster sums & compare to bootstrap threshold
             maxval(C) = sum(tvals(posclusterslabelmat==C));
-            if  maxval(C)>= maxclustersum_th
+            if  maxval(C)>= max_th
                 mask(posclusterslabelmat==C)= cluster_label; % flag clusters above threshold
                 cluster_label = cluster_label+1;
             end
@@ -159,32 +159,31 @@ if mcctype == 3 && size(tvals_H0,1) > 1
     end
     
     % compute corrected p-values: number of times observed mass > bootstrap
-    mask2 = logical(mask); % logical - faster for masking
-    pval  = ones(size(mask));
-    if any(mask2(:)) % sum(mask2(:))>0
-        L       = posclusterslabelmat.*mask2; % remove non significant clusters
-        CL_list = setdiff(unique(L),0);       % remove label 0
-        for CL=1:length(CL_list)
-            % sort_clustermax
+    mask2 = logical(mask);
+    pcorr  = ones(size(mask));
+    if any(mask2(:))
+        L = posclusterslabelmat.*mask2;     % remove non significant clusters
+        CL_list = setdiff(unique(L),0);     % remove label 0
+        for CL = 1:length(CL_list)
             cluster_mass = sum(tvals(L==CL_list(CL)));
             if any(cluster_mass == maxval) % double checking this is in the mask
-                p = 1-sum(cluster_mass>=sort_clustermax)./nboot;
+                p = 1-sum(cluster_mass >= sort_clustermax)./nboot;
                 if p ==0
                     p = 1/nboot; % never 0
                 end
                 tmp = ones(size(mask));
                 tmp(L==CL_list(CL)) = p; % set p-values for many cells
-                pval = pval.*tmp; % tmp is never at the same location so we can just 'add' values
+                pcorr = pcorr.*tmp;   % tmp is never at the same location so we can just add values
             else
-                error('cannot find the cluster mass for p-value? while found for the mask?? something is seriously wrong')
+                error('Cannot find the cluster mass for p-value? while found for the mask? something is seriously wrong')
             end
         end
     end
-    pval(pval==1)=NaN;
+    pcorr(pcorr==1) = NaN;
     
     % check again corrected p values are correct
-    if any(pval > pthresh)
-       error('some corrected p-values are above the set alpha value, which should not happen - this is a bug, please contact the LIMO team') 
+    if any(pcorr > pthresh)
+       error('some corrected p-values are above the set alpha value, which should not happen - this is a bug') 
     end
     
     % just for output
@@ -196,32 +195,28 @@ if mcctype == 3 && size(tvals_H0,1) > 1
     %%%%%%%%%%%%%%% end of cluster_test %%%%%%%%%%%%%%%%
 end
 
-% temporal clustering
-if mcctype == 3 && size(tvals_H0,1) == 1 || mcctype == 4
+% Temporal clustering only (1 electrode)
+if mcctype == 2 && size(tvals_H0,1) == 1 || mcctype == 3
     disp('Applying temporal clustering...')
     % 1st get the distribution of maxima under H0
-    [th,boot_maxclustersum] = limo_ecluster_make(squeeze(tvals_H0),squeeze(pvals_H0),pthresh);
-    max_th                  = th.elec;
+    [th, boot_maxclustersum] = limo_ecluster_make(squeeze(tvals_H0),squeeze(pvals_H0),pthresh);
+    max_th = th.elec;
     % 2nd threshold observed data
     [sigcluster, pcorr, maxval] = limo_ecluster_test(squeeze(tvals),squeeze(pvals),th,pthresh, boot_maxclustersum);
     mask = sigcluster.elec_mask;
 end
 
-%Plot
-% when nothing is significant, always show why
-if sum(mask(:)) == 0
-    fig = 1 ;
-end
-if fig == 1
+% Plot
+if sum(mask(:)) > 0
     figure('Name','Cluster correction under H0')
     mass = sort(boot_maxclustersum);
     plot(mass,'LineWidth',3); grid on; hold on;
 
-    plot(min(find(mass==max_th)),max_th,'r*','LineWidth',5)
+    plot(find(mass == max_th,1), max_th, 'r*', 'LineWidth',5)
     txt = ['bootstrap threashold ' num2str(max_th) '\rightarrow'];
-    text(min(find(mass==max_th)),max_th,txt,'FontSize',10,'HorizontalAlignment','right');
+    text(find(mass == max_th,1), max_th, txt, 'FontSize', 10, 'HorizontalAlignment','right');
 
-    [val,loc]=min(abs(mass-maxval));
+    [val,loc] = min(abs(mass-maxval));
     plot(loc,maxval,'r*','LineWidth',5)
     txt = ['Biggest cluster mass observed: ' num2str(maxval) '\rightarrow'];
     text(loc,double(maxval),txt,'FontSize',10,'HorizontalAlignment','right');

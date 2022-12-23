@@ -11,7 +11,7 @@ switch mcctype
     % Uncorrected
     case 0
         pcorr = pvals;
-        mask = pvals <= pthresh;
+        mask = pcorr <= pthresh;
 
     % Max-correction
     case 1
@@ -29,7 +29,7 @@ switch mcctype
         end
     
         % Get cluster mask and corrected p-values
-        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh, 1); % limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p)
+        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh); % limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p)
         nClust = length(unique(mask)) - 1; % number of significant clusters
         if nClust > 0
             disp([num2str(nClust) ' significant clusters.'])

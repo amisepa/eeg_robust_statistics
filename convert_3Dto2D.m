@@ -1,12 +1,12 @@
 %% convert 3D electrode positions into 2D layout
 
 % configs
-cfg.elec.pnt(:,1) = [ ALLEEG(1).chanlocs.X ];
-cfg.elec.pnt(:,2) = [ ALLEEG(1).chanlocs.Y ];
-cfg.elec.pnt(:,3) = [ ALLEEG(1).chanlocs.Z ];
-fprintf('creating layout for %s system\n', limo_ft_senstype(cfg.elec));
+cfg.elec.pnt(:,1) = [ chanlocs.X ];
+cfg.elec.pnt(:,2) = [ chanlocs.Y ];
+cfg.elec.pnt(:,3) = [ chanlocs.Z ];
+% fprintf('creating layout for %s system\n', limo_ft_senstype(cfg.elec));
 
-cfg.elec.label = { ALLEEG(1).chanlocs.labels };
+cfg.elec.label = { chanlocs.labels };
 cfg.rotate = [];
 cfg.style = '2d';
 cfg.projection = 'polar';
@@ -120,9 +120,9 @@ Y                 = min(lay.pos(:,2));
 lay.pos(end+1,:)  = [X Y];
 
 %% plot the layout for debugging (ONLY FOR 2D)
-% tmpcfg = [];
-% tmpcfg.layout = lay;
-% ft_layoutplot(tmpcfg);
+tmpcfg = [];
+tmpcfg.layout = lay;
+ft_layoutplot(tmpcfg);
 
 %% to write the layout to a text file, you can use this code snippet
 % fprintf('writing layout to ''%s''\n', cfg.output);
@@ -214,3 +214,113 @@ intrad = min(1.0,max(Rd)*1.02);             % default: just outside the outermos
 if plotrad > intrad
     plotrad = intrad;
 end
+
+
+%%  THIS works to plot ears and nose
+
+root = fileparts(which('limo_eeg'));
+addpath([root filesep 'limo_cluster_functions']);
+addpath([root filesep 'external' filesep 'psom']);
+addpath([root filesep 'external']);
+addpath([root filesep 'help']);
+% ftPath = fileparts(which('besa2fieldtrip.m'));
+ftPath = 'C:\Users\Cedric\Desktop\fieldtrip';
+addpath(ftPath);
+addpath(fullfile(ftPath,'external','signal'))
+addpath(fullfile(ftPath,'external','stats'))
+addpath(fullfile(ftPath,'external','images'))
+
+
+[tmpeloc, labels, Th, Rd, indices] = readlocs(chanlocs);
+% Note: Th and Rd correspond to indices channels-with-coordinates only
+plotrad = min(1.0,max(Rd)*1.02);            % default: just outside the outermost electrode location
+plotrad = max(plotrad,0.5);                 % default: plot out to the 0.5 head boundary
+rmax = 0.5;  % actual head radius - Don't change this!
+headrad = rmax;  % (anatomically correct)
+sf  = headrad/plotrad;    % squeeze the model ears and nose by this factor
+
+% ears and nose
+base  = rmax-.0046;
+tip   = 1.15*rmax; 
+tipr  = .01*rmax;                    % nose tip rounding
+q = .04; % ear lengthening
+
+% plot nose
+basex = 0.18*rmax;  % nose width
+tiphw = .04*rmax;   % nose tip half width
+plot3([basex;tiphw;0;-tiphw;-basex]*sf,[base;tip-tipr;tip;tip-tipr;base]*sf,...
+     2*ones(size([basex;tiphw;0;-tiphw;-basex])),'Color','k','LineWidth',2);
+
+% plot ears
+EarX  = [.497-.005  .510  .518  .5299 .5419  .54    .547   .532   .510   .489-.005]; % rmax = 0.5
+EarY  = [q+.0555 q+.0775 q+.0783 q+.0746 q+.0555 -.0055 -.0932 -.1313 -.1384 -.1199];
+plot3(EarX*sf,EarY*sf,2*ones(size(EarX)),'color','k','LineWidth',2)   %left
+plot3(-EarX*sf,EarY*sf,2*ones(size(EarY)),'color','k','LineWidth',2) % right
+
+l     = 0:2*pi/100:2*pi;
+HeadX = cos(l).*rmax;
+HeadY = sin(l).*rmax;
+NoseX = [0.18*rmax 0 -0.18*rmax];
+NoseY = [rmax-.004 rmax*1.15 rmax-.004];
+EarX  = [.497 .510 .518 .5299 .5419 .54 .547 .532 .510 .489];
+EarY  = [.0555 .0775 .0783 .0746 .0555 -.0055 -.0932 -.1313 -.1384 -.1199];
+
+% use helper function for 3D layout
+[pnt, label] = limo_ft_channelposition(cfg.elec);
+
+% Scale the electrode positions to fit within a unit circle, i.e. electrode radius = 0.45
+prj = limo_ft_elproj(pnt, cfg.projection);
+d = limo_ft_dist(prj');
+d(find(eye(size(d)))) = inf;
+mindist = min(d(:));
+X = prj(:,1);
+Y = prj(:,2);
+Width  = ones(size(X)) * mindist * 0.8;
+Height = ones(size(X)) * mindist * 0.6;
+lay.pos    = [X Y];
+lay.width  = Width;
+lay.height = Height;
+lay.label  = label;
+ind_scale = strmatch('SCALE', chanlabels);
+ind_comnt = strmatch('COMNT', lay.label);
+sel = setdiff(1:length(lay.label), [ind_scale ind_comnt]); % these are excluded for scaling
+x = lay.pos(sel,1);
+y = lay.pos(sel,2);
+xrange = limo_ft_range(x);
+yrange = limo_ft_range(y);
+
+% First scale the width and height of the box for multiplotting
+lay.width  = lay.width./xrange;
+lay.height = lay.height./yrange;
+
+% Then shift and scale the electrode positions
+lay.pos(:,1) = 0.9*((lay.pos(:,1)-min(x))/xrange-0.5);
+lay.pos(:,2) = 0.9*((lay.pos(:,2)-min(y))/yrange-0.5);
+
+% Define the outline of the head, ears and nose
+lay.outline{1} = [HeadX(:) HeadY(:)];
+lay.outline{2} = [NoseX(:) NoseY(:)];
+lay.outline{3} = [ EarX(:)  EarY(:)];
+lay.outline{4} = [-EarX(:)  EarY(:)];
+
+% Define the anatomical mask based on a circular head
+lay.mask{1} = [HeadX(:) HeadY(:)];
+
+% add axes positions for comments and scale information if required
+% add a placeholder for the comment in the upper left corner
+lay.label{end+1}  = 'COMNT';
+lay.width(end+1)  = mean(lay.width);
+lay.height(end+1) = mean(lay.height);
+X                 = min(lay.pos(:,1));
+Y                 = max(lay.pos(:,2));
+Y                 = min(lay.pos(:,2));
+lay.pos(end+1,:)  = [X Y];
+
+% add a placeholder for the scale in the upper right corner
+lay.label{end+1}  = 'SCALE';
+lay.width(end+1)  = mean(lay.width);
+lay.height(end+1) = mean(lay.height);
+X                 = max(lay.pos(:,1));
+Y                 = max(lay.pos(:,2));
+Y                 = min(lay.pos(:,2));
+lay.pos(end+1,:)  = [X Y];

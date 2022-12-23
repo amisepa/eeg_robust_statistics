@@ -83,7 +83,7 @@ end
 % Estimate H0 for each channel using ttests on null data
 results_H0 = NaN(size(data1,1), size(data1,2), 2, nboot);
 disp('Running statistical tests on H0 data...');
-% progressbar('EEG channels','Boots')
+progressbar('EEG channels','Boots')
 for iChan = 1:size(data1,1)
     disp(['Estimating H0 for channel ' num2str(iChan) '/' num2str(size(data1,1))])
     idx = isnan(data1_centered(iChan,1,:));
@@ -91,7 +91,7 @@ for iChan = 1:size(data1,1)
     idx = isnan(data2_centered(iChan,1,:));
     y2 = data2_centered(iChan,:,~idx);
     
-    parfor b = 1:nboot
+    parfor b = 1:10%nboot
         if strcmpi(method,'trimmed Mean')
             [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest( y1(:,:,boot_table{iChan}(:,b)), y2(:,:,boot_table{iChan}(:,b)) );
         elseif strcmpi(method,'mean')
@@ -100,14 +100,13 @@ for iChan = 1:size(data1,1)
             errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
         end
 
-%         frac2 = b/nboot;
-%         frac1 = (iChan-1 + frac2) / size(data1,1);
-%         progressbar(frac1, frac2)
+        frac2 = b/nboot;
+        frac1 = (iChan-1 + frac2) / size(data1,1);
+        progressbar(frac1, frac2)
     end
-    for b = 1:nboot
-        results_H0(iChan,:,1,b) = tval{b};
-        results_H0(iChan,:,2,b) = pval{b};
-    end
+    results_H0(iChan,:,1) = tval;
+    results_H0(iChan,:,2) = pval;
+
 end
 
-disp('Random effects computed.')
+disp('Random effects conputed.')

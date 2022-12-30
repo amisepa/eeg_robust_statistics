@@ -207,7 +207,7 @@ if mcctype == 2 && size(tvals_H0,1) == 1 || mcctype == 3
 end
 
 % Plot
-if sum(mask(:)) > 0
+if sum(mask(:)) == 0
     figure('Name','Cluster correction under H0')
     mass = sort(boot_maxclustersum);
     plot(mass,'LineWidth',3); grid on; hold on;

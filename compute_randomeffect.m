@@ -16,32 +16,42 @@
 
 function [results, results_H0] = compute_randomeffect(data1,data2,nboot,method)
 
+% Default parameters
 if ~exist('nboot','var') || isempty(nboot)
 	nboot = 1000;
 end
-
 if ~exist('method','var') || isempty(method)
 	method = 'trimmed mean';
 end
-
+% check if data are dependent or independent
+if size(x1,3) == size(x2,3)
+    dpt = 1;
+end
 
 % Run stats on real data
 results = nan(size(data1,1),size(data1,2),2); % 2 for tval and pval
 disp('Running statistical tests on real data...');
 progressbar('EEG channels')
 for iChan = 1:size(data1,1)
-    idx = isnan(data1(iChan,1,:));
-    y1 = data1(iChan,:,~idx);
-    idx = isnan(data2(iChan,1,:));
-    y2 = data2(iChan,:,~idx);
+    nans = isnan(data1(iChan,1,:));
+    x1 = data1(iChan,:,~nans);
+    nans = isnan(data2(iChan,1,:));
+    x2 = data2(iChan,:,~nans);
 
     if strcmpi(method,'trimmed Mean')
-		% ADD DETECTION IF DATA ARE DEPENDENT OR INDEPENDENT (DIFFERENT SIZE)
-        [tval,~,~,~,pval,~,~] = limo_yuend_ttest(y1,y2,20,0.05);
-%         [tval, ~, ~, ~, ~, pval] = yuend(y1,y2,20,0.05); 		% 20% trimmed means
+        if dpt
+            [tval,~,~,~,pval,~,~] = limo_yuend_ttest(x1,y2,20,0.05);
+%             [tval,~,~,~,~,pval] = yuend(x1,x2,20,0.05);   % for 2D data
+        else
+            [tval,~,~,~,pval,~,~] = limo_yuen_ttest(x1,y2,20,0.05);
+%             [tval,~,~,~,~,~,pval] = yuen(x1,x2,20,0.05);  % for 2D data
+        end
     elseif strcmpi(method,'mean')
-		% ADD DETECTION IF DATA ARE DEPENDENT OR INDEPENDENT (DIFFERENT SIZE)
-        [~,~,~,~,~,tval,pval] = limo_ttest(1,y1,y2,.05);
+        if dpt
+            [~,~,~,~,~,tval,pval] = limo_ttest(1,x1,x2,.05);
+        else
+            [~,~,~,~,~,tval,pval] = limo_ttest(2,x1,x2,.05);
+        end
     else
         errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
     end
@@ -52,10 +62,9 @@ for iChan = 1:size(data1,1)
 end
 clear tval; clear pval
 
-% Generate boot table (surrogate)
+% Generate boot table (H0)
 b = 1;
 boot_index = zeros(size(data1,3),nboot);
-disp('Generating boot table of H0 data...')
 while b ~= nboot + 1
     tmp = randi(size(data1,3),size(data1,3),1);
     if length(unique(tmp))-1 >= 3   % minimum number of subjects 
@@ -69,7 +78,6 @@ for iChan = size(data1,1):-1:1
 end
 
 % Center data to estimate H0
-disp('Centering H0 data.')
 if strcmpi(method,'trimmed Mean')
     data1_centered = data1 - repmat(limo_trimmed_mean(data1),[1 1 size(data1,3)]);
     data2_centered = data2 - repmat(limo_trimmed_mean(data2),[1 1 size(data2,3)]);
@@ -83,26 +91,29 @@ end
 % Estimate H0 for each channel using ttests on null data
 results_H0 = NaN(size(data1,1), size(data1,2), 2, nboot);
 disp('Running statistical tests on H0 data...');
-% progressbar('EEG channels','Boots')
 for iChan = 1:size(data1,1)
     disp(['Estimating H0 for channel ' num2str(iChan) '/' num2str(size(data1,1))])
-    idx = isnan(data1_centered(iChan,1,:));
-    y1 = data1_centered(iChan,:,~idx);
-    idx = isnan(data2_centered(iChan,1,:));
-    y2 = data2_centered(iChan,:,~idx);
+    nans = isnan(data1_centered(iChan,1,:));
+    x1 = data1_centered(iChan,:,~nans);
+    nans = isnan(data2_centered(iChan,1,:));
+    x2 = data2_centered(iChan,:,~nans);
     
     parfor b = 1:nboot
         if strcmpi(method,'trimmed Mean')
-            [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest( y1(:,:,boot_table{iChan}(:,b)), y2(:,:,boot_table{iChan}(:,b)) );
+            if dpt
+                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for depedent variables
+            else
+                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for indepedent variables
+            end
         elseif strcmpi(method,'mean')
-			[~,~,~,~,~,tval{b},pval{b}] = limo_ttest(1,y1(:,:,boot_table{iChan}(:,b)), y2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test
+            if dpt
+			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(1,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for depedent variables
+            else
+			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(2,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for independent variables
+            end
         else
             errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
         end
-
-%         frac2 = b/nboot;
-%         frac1 = (iChan-1 + frac2) / size(data1,1);
-%         progressbar(frac1, frac2)
     end
     for b = 1:nboot
         results_H0(iChan,:,1,b) = tval{b};

@@ -5,6 +5,17 @@
 function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, mcctype, pthresh, neighbormatrix)
 
 nClust = [];
+mask = [];
+% parpool with max number of workers
+% delete(gcp('nocreate'))
+% p = gcp('nocreate');
+% if isempty(p)
+%     c = parcluster; % cluster profile
+%     N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
+%     N = str2double(N);
+%     c.NumWorkers = N-1;  % update cluster profile to include all workers
+%     c.parpool();
+% end
 
 switch mcctype
 
@@ -58,11 +69,11 @@ switch mcctype
         nboot = size(tvals_H0,3);
         tfce_H0_thmaps = cell(1,nboot);
         tfce_H0_score = nan(size(tvals_H0,1),size(tvals_H0,2),nboot);
-        progressbar('TFCE thresholding null data')
-        for b = 1:nboot
+        % progressbar('TFCE thresholding null data')
+        parfor b = 1:nboot
             disp(['boot ' num2str(b) '/' num2str(nboot)])
             [tfce_H0_score(:,:,b), tfce_H0_thmaps{b}] = limo_tfce(ndim, squeeze(tvals_H0(:,:,b)), neighbormatrix,0);
-            progressbar(b/nboot)
+            % progressbar(b/nboot)
         end
 
         % Max-correction on TFCE data

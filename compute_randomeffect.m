@@ -7,6 +7,7 @@
 %	nboot 	- number of iterations for the bootstrap (default = 1000)
 % 	method 	- 'mean' to use paired t-test and 'trimmed mean' to use Yuen t-test default; 20% trim)
 %				Yuen t-test better accounts for outliers and non-normal distributions.
+%   dpt     - variables are dependent (1, paired t-test) or not (0, two-sample t-test)
 %
 % OUTPUTS
 % 	results 	- t and p values for real data
@@ -14,7 +15,7 @@
 %
 % Cedric Cannard, Sep 2022
 
-function [results, results_H0] = compute_randomeffect(data1,data2,nboot,method)
+function [results, results_H0] = compute_randomeffect(data1,data2,nboot,method,dpt)
 
 % Default parameters
 if ~exist('nboot','var') || isempty(nboot)
@@ -23,28 +24,35 @@ end
 if ~exist('method','var') || isempty(method)
 	method = 'trimmed mean';
 end
-% check if data are dependent or independent
-if size(x1,3) == size(x2,3)
-    dpt = 1;
-end
 
-% Run stats on real data
+% parpool with max number of workers
+% delete(gcp('nocreate'))
+% p = gcp('nocreate');
+% if isempty(p)
+%     c = parcluster; % cluster profile
+%     N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
+%     N = str2double(N);
+%     c.NumWorkers = N-1;  % update cluster profile to include all workers
+%     c.parpool();
+% end
+
+%  Run stats on real data (All electrodes)
 results = nan(size(data1,1),size(data1,2),2); % 2 for tval and pval
-disp('Running statistical tests on real data...');
+disp('Running statistical tests on real data (all electrodes)...');
 progressbar('EEG channels')
 for iChan = 1:size(data1,1)
-    nans = isnan(data1(iChan,1,:));
-    x1 = data1(iChan,:,~nans);
-    nans = isnan(data2(iChan,1,:));
-    x2 = data2(iChan,:,~nans);
+    nanSubj = isnan(data1(iChan,1,:));
+    x1 = data1(iChan,:,~nanSubj);
+    nanSubj = isnan(data2(iChan,1,:));
+    x2 = data2(iChan,:,~nanSubj);
 
     if strcmpi(method,'trimmed Mean')
         if dpt
-            [tval,~,~,~,pval,~,~] = limo_yuend_ttest(x1,y2,20,0.05);
-%             [tval,~,~,~,~,pval] = yuend(x1,x2,20,0.05);   % for 2D data
+            [tval,~,~,~,pval,~,~] = limo_yuend_ttest(x1,x2,20,0.05);
+%             [tval,~,~,~,~,pval] = yuend(x1,x2,20,0.05);   % for 2D vecotrs
         else
-            [tval,~,~,~,pval,~,~] = limo_yuen_ttest(x1,y2,20,0.05);
-%             [tval,~,~,~,~,~,pval] = yuen(x1,x2,20,0.05);  % for 2D data
+            [tval,~,~,~,pval,~,~] = limo_yuen_ttest(x1,x2,20,0.05);
+%             [tval,~,~,~,~,~,pval] = yuen(x1,x2,20,0.05);  % for 2D vectors
         end
     elseif strcmpi(method,'mean')
         if dpt
@@ -65,12 +73,15 @@ clear tval; clear pval
 % Generate boot table (H0)
 b = 1;
 boot_index = zeros(size(data1,3),nboot);
+disp('Generating boot table (H0)...')
 while b ~= nboot + 1
     tmp = randi(size(data1,3),size(data1,3),1);
-    if length(unique(tmp))-1 >= 3   % minimum number of subjects 
+    % if length(unique(tmp)) >= 4   % minimum number of subjects 
         boot_index(:,b) = tmp;
         b = b + 1;
-    end
+    % else
+        % error('Not enough subjects, minimum is 4')
+    % end
 end
 clear tmp
 for iChan = size(data1,1):-1:1
@@ -93,10 +104,10 @@ results_H0 = NaN(size(data1,1), size(data1,2), 2, nboot);
 disp('Running statistical tests on H0 data...');
 for iChan = 1:size(data1,1)
     disp(['Estimating H0 for channel ' num2str(iChan) '/' num2str(size(data1,1))])
-    nans = isnan(data1_centered(iChan,1,:));
-    x1 = data1_centered(iChan,:,~nans);
-    nans = isnan(data2_centered(iChan,1,:));
-    x2 = data2_centered(iChan,:,~nans);
+    nanSubj = isnan(data1_centered(iChan,1,:));
+    x1 = data1_centered(iChan,:,~nanSubj);
+    nanSubj = isnan(data2_centered(iChan,1,:));
+    x2 = data2_centered(iChan,:,~nanSubj);
     
     parfor b = 1:nboot
         if strcmpi(method,'trimmed Mean')

@@ -76,12 +76,12 @@ boot_index = zeros(size(data1,3),nboot);
 disp('Generating boot table (H0)...')
 while b ~= nboot + 1
     tmp = randi(size(data1,3),size(data1,3),1);
-    % if length(unique(tmp)) >= 4   % minimum number of subjects 
+    if length(unique(tmp)) >= 4   % minimum number of subjects 
         boot_index(:,b) = tmp;
         b = b + 1;
-    % else
-        % error('Not enough subjects, minimum is 4')
-    % end
+    else
+        error('Not enough subjects, minimum is 4 for degrees of freedom >= 3')
+    end
 end
 clear tmp
 for iChan = size(data1,1):-1:1

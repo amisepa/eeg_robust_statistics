@@ -1,5 +1,8 @@
 %% Cluster-correction of mass-univariate EEG data
 % 
+% Usage:
+%   [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
+% 
 % Cedric Cannard, Sep 2022
 
 function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
@@ -152,7 +155,7 @@ if mcctype == 2 && size(tvals_H0,1) > 1
         for C = nposclusters:-1:1 % compute cluster sums & compare to bootstrap threshold
             maxval(C) = sum(tvals(posclusterslabelmat==C));
             if  maxval(C)>= max_th
-                mask(posclusterslabelmat==C)= cluster_label; % flag clusters above threshold
+                mask(posclusterslabelmat==C) = cluster_label; % flag clusters above threshold
                 cluster_label = cluster_label+1;
             end
         end
@@ -215,7 +218,7 @@ if sum(mask(:)) == 0
     plot(find(mass == max_th,1), max_th, 'r*', 'LineWidth',5)
     txt = ['bootstrap threashold ' num2str(max_th) '\rightarrow'];
     text(find(mass == max_th,1), max_th, txt, 'FontSize', 10, 'HorizontalAlignment','right');
-
+    
     [val,loc] = min(abs(mass-maxval));
     plot(loc,maxval,'r*','LineWidth',5)
     txt = ['Biggest cluster mass observed: ' num2str(maxval) '\rightarrow'];

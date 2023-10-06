@@ -99,9 +99,9 @@ if sum(mask,'all') > 0
     
     % Topoplot at max time/frequency (REPLACE WITH 3D headplot)
     subplot(3,3,6);
-    opt = {'maplimits','maxmin','verbose','off','colormap', cmap};
+    % opt = {'maplimits','maxmin','verbose','off','colormap', cmap};
     % topoplot(effects(:,cluster_maxf(c)),chanlocs,opt{:});
-    topoplot(effects(:,cluster_maxf), chanlocs, opt{:}, 'emarker', {'.','k',5,1}, ...   % normal electrodes
+    topoplot(effects(:,cluster_maxf), chanlocs, 'emarker', {'.','k',5,1}, ...   % normal electrodes
         'emarker2',{find(pcorr<alpha),'.',[0.8500, 0.3250, 0.0980],15,1});      % significant electrodes
     % topoplot(effects(:,tf_stamp),chanlocs,opt{:});
     % title(['topoplot @' num2str(round(xaxis(f))) 'Hz'],'FontSize',12);

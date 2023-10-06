@@ -24,7 +24,7 @@ switch mcctype
         mask = pcorr <= pthresh;
         nClust = length(unique(mask)) - 1; % number of significant clusters
         if nClust > 0
-            disp([num2str(nClust) ' significant clusters.'])
+            fprintf('%g significant clusters. \n',nClust);
         end
 
     case 1  % Max-correction

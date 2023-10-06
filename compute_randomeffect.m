@@ -26,17 +26,17 @@ if ~exist('method','var') || isempty(method)
 end
 
 % parpool with max number of workers
-% delete(gcp('nocreate'))
-% p = gcp('nocreate');
-% if isempty(p)
-%     c = parcluster; % cluster profile
-%     N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
-%     N = str2double(N);
-%     c.NumWorkers = N-1;  % update cluster profile to include all workers
-%     c.parpool();
-% end
+delete(gcp('nocreate'))
+p = gcp('nocreate');
+if isempty(p)
+    c = parcluster; % cluster profile
+    N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
+    N = str2double(N);
+    c.NumWorkers = N-1;  % update cluster profile to include all workers
+    c.parpool();
+end
 
-%  Run stats on real data (All electrodes)
+% Run stats on real data (All electrodes)
 results = nan(size(data1,1),size(data1,2),2); % 2 for tval and pval
 disp('Running statistical tests on real data (all electrodes)...');
 progressbar('EEG channels')
@@ -84,7 +84,7 @@ while b ~= nboot + 1
     end
 end
 clear tmp
-for iChan = size(data1,1):-1:1
+parfor iChan = size(data1,1):-1:1
     boot_table{iChan} = boot_index;
 end
 

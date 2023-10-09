@@ -4,18 +4,20 @@
 
 function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, mcctype, pthresh, neighbormatrix)
 
-nClust = [];
 mask = [];
-% parpool with max number of workers
+pcorr = [];
+nClust = [];
+
+% Parpool with max number of workers
 % delete(gcp('nocreate'))
-% p = gcp('nocreate');
-% if isempty(p)
-%     c = parcluster; % cluster profile
-%     N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
-%     N = str2double(N);
-%     c.NumWorkers = N-1;  % update cluster profile to include all workers
-%     c.parpool();
-% end
+p = gcp('nocreate');
+if isempty(p)
+    c = parcluster; % cluster profile
+    N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
+    N = str2double(N);
+    c.NumWorkers = N-1;  % update cluster profile to include all workers
+    c.parpool();
+end
 
 switch mcctype
 
@@ -47,49 +49,45 @@ switch mcctype
             disp([num2str(nClust) ' significant clusters.'])
         end
 
-        % References
-        disp(' ');
-        disp('Refs for Clustering & Bootstrap:')
-        disp('Maris & Oostenveld (2007), Nonparametric statistical testing of EEG- and MEG- data.')
-        disp('Journal of Neuroscience Methods.')
-        disp(' ');
-        disp('Pernet, Latinus, Nichols, & Rousselet, (2015).')
-        disp('Cluster-based computational methods for mass univariate analyses')
-        disp('of event-related brain potentials/fields: A simulation study.')
-        disp('Journal of Neuroscience methods.')
+        % % References
+        % disp(' ');
+        % disp('Refs for Clustering & Bootstrap:')
+        % disp('Maris & Oostenveld (2007), Nonparametric statistical testing of EEG- and MEG- data.')
+        % disp('Journal of Neuroscience Methods.')
+        % disp(' ');
+        % disp('Pernet, Latinus, Nichols, & Rousselet, (2015).')
+        % disp('Cluster-based computational methods for mass univariate analyses')
+        % disp('of event-related brain potentials/fields: A simulation study.')
+        % disp('Journal of Neuroscience methods.')
 
     case 3  % TFCE-correction
         ndim = 2; % 1 (one channel); 2 (ERP, power, or single time-freq map); 3 (ERSP)
 
-        % Thresholding
-        tfce_score = limo_tfce(ndim, tvals, neighbormatrix);
-
-        % Apply TFCE to null data
-        disp('Applying TFCE to null data. This may take a while ...')
+        % Apply Threshold-free cluster enhancement (TFCE) to null data
+        disp('Applying threshold-free cluster enhancement (TFCE) to null data...')
         nboot = size(tvals_H0,3);
         tfce_H0_thmaps = cell(1,nboot);
         tfce_H0_score = nan(size(tvals_H0,1),size(tvals_H0,2),nboot);
-        % progressbar('TFCE thresholding null data')
         parfor b = 1:nboot
             disp(['boot ' num2str(b) '/' num2str(nboot)])
             [tfce_H0_score(:,:,b), tfce_H0_thmaps{b}] = limo_tfce(ndim, squeeze(tvals_H0(:,:,b)), neighbormatrix,0);
-            % progressbar(b/nboot)
         end
 
         % Max-correction on TFCE data
+        tfce_score = limo_tfce(ndim, tvals, neighbormatrix);  % find threshold
         [mask, pcorr] = correct_max(tfce_score,tfce_H0_score,pthresh,1); % adapted from limo_max_correction
         nClust = length(unique(mask))-1;
         if nClust > 0
             disp([num2str(nClust) ' significant clusters.'])
         end
 
-        % References
-        disp(' ');
-        disp('Ref for TFCE:')
-        disp('Pernet, Latinus, Nichols, & Rousselet (2015).')
-        disp('Cluster-based computational methods for mass univariate analyses')
-        disp('of event-related brain potentials/fields: A simulation study.')
-        disp('Journal of Neuroscience methods')
-        disp(' ');
+        % % References
+        % disp(' ');
+        % disp('Ref for TFCE:')
+        % disp('Pernet, Latinus, Nichols, & Rousselet (2015).')
+        % disp('Cluster-based computational methods for mass univariate analyses')
+        % disp('of event-related brain potentials/fields: A simulation study.')
+        % disp('Journal of Neuroscience methods')
+        % disp(' ');
 
 end

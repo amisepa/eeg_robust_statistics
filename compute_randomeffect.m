@@ -26,7 +26,7 @@ if ~exist('method','var') || isempty(method)
 end
 
 % parpool with max number of workers
-delete(gcp('nocreate'))
+% delete(gcp('nocreate'))
 p = gcp('nocreate');
 if isempty(p)
     c = parcluster; % cluster profile
@@ -84,7 +84,7 @@ while b ~= nboot + 1
     end
 end
 clear tmp
-parfor iChan = size(data1,1):-1:1
+for iChan = size(data1,1):-1:1
     boot_table{iChan} = boot_index;
 end
 

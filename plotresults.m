@@ -1,17 +1,16 @@
 %% Plots results using correction for multiple comparison masks
-% 
+%
 % Usage:
 %   plotresults(datatype, xaxis, stats, mask, pcorr, chanlocs)
-% 
+%
 % Cedric Cannard, Sep 2022
 
-function plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs)
-
-% Look at limo_display_image_tf for time-frequency data
+function plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+% Look up limo_display_image_tf for time-frequency data
 
 if isempty(mask)
     disp('Empty mask, computing one from corrected p-values.'); %return
-    mask = pcorr < 0.05;
+    mask = pcorr < alpha;
 end
 if sum(mask,'all') == 0
     warning('No significant differences');
@@ -19,44 +18,16 @@ end
 
 if sum(mask,'all') > 0
 
-    figure('Color','w'); set(gcf,'InvertHardCopy','off');
-
-    % Extract significant t-values for plotting
-    effects = stats.*single(mask>0);
-    effects(effects==0) = NaN;
-    [v,c] = max(effects(:));  
-    % [c, tf_stamp] = find(effects==v); % which channel and time/frequency frame
-    % if length(c) > 1  % if we have multiple times the exact same max values
-    %     c = c(1); 
-    %     % tf_stamp = tf_stamp(1);  % then take the 1st (usually an artifact but allows to see it)
-    % end
- 
-    % Image all channels and time/frequency data
-    subplot(3,3,[1 2 4 5 7 8]);
-    imagesc(xaxis,1:size(effects,1),effects);
-    cmap = colormap(gca, color_images(effects)); % colormap('parula')
-    colorbar; % clim([0 0.1])
-    if strcmpi(datatype, 'time')
-        set_imgaxes('time', 'Channels', chanlocs, effects);
-    elseif strcmpi(datatype, 'frequency')
-        set_imgaxes('frequency', 'Channels', chanlocs, effects);
-    end
-    set(gca,'ytick',1:size(stats,1),'yticklabel',{chanlocs.labels});
-    % correctoptions = {'Uncorrected' 'Max-corrected' 'Cluster-corrected' 'TFCE-corrected'};
-    % title(sprintf("All electrodes and all bands ('%s')",correctoptions{mcctype+1}),'Fontsize',12)
-    
-    % Return cluster info
+    % Get clusters properties (start/end, peak, channel, frame/freq)
     n_cluster     = max(mask(:));
     cluster_start = nan(1,n_cluster); % start of each cluster
     cluster_end   = nan(1,n_cluster); % end of each cluster
     cluster_maxv  = nan(1,n_cluster); % max value for each cluster
     cluster_maxe  = nan(1,n_cluster); % channel location of the max value of each cluster
     cluster_maxf  = nan(1,n_cluster); % frame location of the max value of each cluster
-    warning off
     for iClust = 1:n_cluster
         tmp = stats.*(mask==iClust);
-        tmp(tmp==Inf) = NaN;
-        tmp(tmp==-Inf) = NaN;
+        tmp(tmp==Inf) = NaN; tmp(tmp==-Inf) = NaN;
         sigframes = sum(tmp,1);
         cluster_start(iClust) = find(sigframes,1,'first');
         cluster_end(iClust) = find(sigframes,1,'last');
@@ -69,56 +40,119 @@ if sum(mask,'all') > 0
         end
         [cluster_maxe(iClust), cluster_maxf(iClust)] = ind2sub(size(tmp),find(tmp==V(1)));
     end
+    
+    % Sort clusters from strongest to smallest t-value
+    [~, maxEffect] = max(abs(cluster_maxv)); 
+    [~,idx] = sort(cluster_maxv,'descend','ComparisonMethod','abs');
+    % cluster_maxe = cluster_maxe(idx);
+    % cluster_maxf = cluster_maxf(idx);
+    % cluster_maxv = cluster_maxv(idx);
+    % cluster_start = cluster_start(idx);
+    % cluster_end = cluster_end(idx);
+    % [~, maxEffect] = max(abs(cluster_maxv)); % should be 1 now, but to be sure
+    
+    % Print in command window
     for iClust = 1:n_cluster
         if strcmpi(datatype, 'time')
-            fprintf('Cluster %g: from %g to %g ms. Peak effect at channel %s %g ms (t = %g) \n', ...
-                iClust, xaxis(cluster_start(iClust)), xaxis(cluster_end(iClust)), ...
-                chanlocs(cluster_maxe(iClust)).labels, xaxis(cluster_maxf(iClust)), round(cluster_maxv(iClust),1) );
+            fprintf('Cluster %g: %g-%g ms. Peak effect: channel %s at %g ms (t = %g) \n', ...
+                iClust, xaxis(cluster_start(idx(iClust))), xaxis(cluster_end(idx(iClust))), ...
+                chanlocs(cluster_maxe(idx(iClust))).labels, xaxis(cluster_maxf(idx(iClust))), round(cluster_maxv(idx(iClust)),1) );
         elseif strcmpi(datatype, 'frequency')
-            fprintf('Cluster %g: from %g to %g Hz. Peak effect at channel %s %g Hz (t = %g) \n', ...
-                iClust, xaxis(cluster_start(iClust)), xaxis(cluster_end(iClust)), ...
-                chanlocs(cluster_maxe(iClust)).labels, xaxis(cluster_maxf(iClust)), round(cluster_maxv(iClust),1) );
+            fprintf('Cluster %g: %g-%g Hz. Peak effect: channel %s at %g Hz (t = %g) \n', ...
+                iClust, xaxis(cluster_start(idx(iClust))), xaxis(cluster_end(idx(iClust))), ...
+                chanlocs(cluster_maxe(idx(iClust))).labels, xaxis(cluster_maxf(idx(iClust))), round(cluster_maxv(idx(iClust)),1) );
         end
     end
-    warning on
-    
-    % Course plot at peak electrode from cluster 1
-    subplot(3,3,9);
-    % maxElec = cluster_maxe(c);
-    % plot(xaxis,stats(maxElec,:),'LineWidth',2);
-    plot(xaxis,stats(cluster_maxe,:),'LineWidth',2);
-    label = chanlocs(cluster_maxe).labels;
-    if ~iscell(label)
-        mytitle2 = sprintf('%s', label);
-    else
-        mytitle2 = sprintf('%s', char(label));
+
+    %% MAIN PLOT
+
+    figure('Color','w'); set(gcf,'InvertHardCopy','off');
+
+    % Extract significant t-values for plotting
+    effects = stats.*single(mask>0);
+    effects(effects==0) = NaN;
+    % v = max(effects(:));
+    % [c, tf_stamp] = find(effects==v); % which channel and time/frequency frame
+    % if length(c) > 1  % if we have multiple times the exact same max values
+    %     c = c(1);
+    %     tf_stamp = tf_stamp(1);  % then take the 1st (usually an artifact but allows to see it)
+    % end
+
+    % Image all channels and time/frequency data
+    % subplot(3,3,[1 2 4 5 7 8]);
+    imagesc(xaxis,1:size(effects,1),effects);
+    cmap = colormap(gca, color_images(effects)); % colormap('parula')
+    set(gca,'LineWidth',1)
+    colorbar;
+    if contains(datatype,{'time','time-frequency'})
+        xlabel('Time (ms)','FontSize',11,'FontWeight','bold')
+    elseif strcmpi(datatype,'frequency')
+        xlabel('Frequency (Hz)','FontSize',11,'FontWeight','bold')
     end
-    title(mytitle2,'FontSize',11)
-    grid on; axis tight;
-    ylabel('t-values'); xlabel('Frequency (Hz)')
-    
-    % Topoplot at max time/frequency (REPLACE WITH 3D headplot)
-    subplot(3,3,6);
-    opt = {'maplimits','maxmin','verbose','off','colormap', cmap};
-    % topoplot(effects(:,cluster_maxf(c)),chanlocs,opt{:});
-    topoplot(effects(:,cluster_maxf), chanlocs, opt{:}, 'emarker', {'.','k',5,1}, ...   % normal electrodes
-        'emarker2',{find(pcorr<alpha),'.',[0.8500, 0.3250, 0.0980],15,1});      % significant electrodes
-    % topoplot(effects(:,tf_stamp),chanlocs,opt{:});
-    % title(['topoplot @' num2str(round(xaxis(f))) 'Hz'],'FontSize',12);
-    if size(effects,2) == 1
-        title('Topoplot','FontSize',12)
+    if strcmpi(datatype,'time-frequency')
+        ylabel('Frequency (Hz)','FontSize',11,'FontWeight','bold')
     else
-        if strcmpi(datatype, 'time')
-            title(['Topography: ' num2str(xaxis(cluster_maxf(c))) ' ms'],'FontSize',10);
-        elseif strcmpi(datatype, 'frequency')
-            title(['Topography: ' num2str(xaxis(cluster_maxf(c))) ' Hz'],'FontSize',10);
-            % title(['Topography: ' num2str(xaxis(tf_stamp)) ' Hz'],'FontSize',10);
+        ylabel('Channels','FontSize',11,'FontWeight','bold');
+        Ylabels = {chanlocs.labels};
+        % img_prop = get(gca);
+        % newticks = round(linspace(1,length(Ylabels),length(img_prop.YTick)*2));
+        newticks = 1:2:length(Ylabels);
+        newticks = unique(newticks);
+        Ylabels  = Ylabels(newticks);
+        set(gca,'YTick',newticks);
+        set(gca,'YTickLabel', Ylabels);
+    end
+    correctoptions = {'Uncorrected' 'Max-corrected' 'Cluster-corrected' 'TFCE-corrected'};
+    title(sprintf('%s (p<%g)', correctoptions{mcctype+1},alpha),'FontSize',11,'FontWeight','bold');
+
+    % Clim
+    try
+        maxval = max(abs(effects(:)));
+        if max(effects(:)) < 0
+            clim([-maxval 0])
+        elseif min(effects(:)) > 0
+            clim([0 maxval])
+        else
+            clim([-maxval maxval])
         end
-        % title(['Topography: ' freqlist(f)],'FontSize',10);
-        set(gca,'XTickLabel', xaxis);
+    catch caxiserror
+        fprintf('axis issue: %s\n',caxiserror.message)
+    end
+   
+    %% Course plot of t-values of strongest effect
+
+    % subplot(3,3,9);
+    % plot(xaxis,stats(cluster_maxe(maxEffect),:),'LineWidth',2);
+    % chanLabel = chanlocs(cluster_maxe(maxEffect)).labels;
+    % % plot(xaxis,stats(cluster_maxe,:),'LineWidth',2);  % plot peak effect of all clusters superimposed
+    % % chanLabel = {chanlocs(cluster_maxe).labels};
+    % % legend(chanLabel)
+    % title(sprintf('Course plot: %s',chanLabel),'FontSize',11,'fontweight','bold')
+    % grid on; axis tight;
+    % ylabel('t-values','FontSize',11,'fontweight','bold'); 
+    % xlabel('Frequency (Hz)','FontSize',11,'fontweight','bold')
+    % plotSigBar(mask(cluster_maxe(maxEffect),:)==maxEffect,xaxis);
+
+    %% Scalp topography at peak latency/frequency (replace with 3D headplot?)
+
+    % subplot(3,3,6);
+    figure('Color','w')
+    topoplot(stats(:,cluster_maxf(maxEffect)), chanlocs,'emarker', {'.','k',5,1}, ...             % normal electrodes
+        'emarker2',{find(mask(:,cluster_maxf(maxEffect))),'.',"red",15,1}, ...    % significant electrodes
+        'maplimits','maxmin','verbose','off','colormap',cmap);                                                      % parameters
+    if strcmpi(datatype, 'time')
+        title(sprintf('Topography: %g ms', xaxis(cluster_maxf(maxEffect))), ...
+            'FontSize',11,'fontweight','bold');
+    elseif strcmpi(datatype, 'frequency')
+        title(sprintf('Topography: %g Hz', xaxis(cluster_maxf(maxEffect))), ...
+            'FontSize',11,'fontweight','bold');
     end
 
-    colormap(cmap)
-    set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
+    % Adjust labels and ticks fint and weight for all plots
+    % set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
+    set(gcf,'color','w')
 
+else
+    disp('Nothing to plot (nothing is significant)')
 end
+

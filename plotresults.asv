@@ -29,6 +29,8 @@ if sum(mask,'all') > 0
         tmp = stats.*(mask==iClust);
         tmp(tmp==Inf) = NaN; tmp(tmp==-Inf) = NaN;
         sigframes = sum(tmp,1);
+
+        % Cluster info
         cluster_start(iClust) = find(sigframes,1,'first');
         cluster_end(iClust) = find(sigframes,1,'last');
         [V,type] = max([abs(min(tmp(:))) max(tmp(:))]);

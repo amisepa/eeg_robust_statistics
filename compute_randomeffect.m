@@ -10,12 +10,14 @@
 %   dpt     - variables are dependent (1, paired t-test) or not (0, two-sample t-test)
 %
 % OUTPUTS
-% 	results 	- t and p values for real data
-%	results_H0 	- t and p values for H0 data
+% 	tvals 	    - t-values for real data
+% 	pvals 	    - p-values for real data
+%	tvals_H0    - t-values for H0 data
+%	pvals_H0    - p-values for H0 data
 %
 % Cedric Cannard, Sep 2022
 
-function [results, results_H0] = compute_randomeffect(data1,data2,nboot,method,dpt)
+function [tvals,pvals,tvals_H0,pvals_H0] = compute_randomeffect(data1,data2,nboot,method,dpt)
 
 % Default parameters
 if ~exist('nboot','var') || isempty(nboot)
@@ -37,7 +39,8 @@ if isempty(p)
 end
 
 % Run stats on real data (All electrodes)
-results = nan(size(data1,1),size(data1,2),2); % 2 for tval and pval
+tvals = nan(size(data1,1),size(data1,2));
+pvals = nan(size(data1,1),size(data1,2));
 disp('Running statistical tests on real data (all electrodes)...');
 progressbar('EEG channels')
 for iChan = 1:size(data1,1)
@@ -47,24 +50,28 @@ for iChan = 1:size(data1,1)
     x2 = data2(iChan,:,~nanSubj);
 
     if strcmpi(method,'trimmed Mean')
-        if dpt
+        if strcmpi(dpt, 'dpt')
             [tval,~,~,~,pval,~,~] = limo_yuend_ttest(x1,x2,20,0.05);
 %             [tval,~,~,~,~,pval] = yuend(x1,x2,20,0.05);   % for 2D vecotrs
-        else
+        elseif strcmpi(dpt, 'idpt')
             [tval,~,~,~,pval,~,~] = limo_yuen_ttest(x1,x2,20,0.05);
 %             [tval,~,~,~,~,~,pval] = yuen(x1,x2,20,0.05);  % for 2D vectors
+        else
+            errordlg("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
         end
     elseif strcmpi(method,'mean')
-        if dpt
+        if strcmpi(dpt, 'dpt')
             [~,~,~,~,~,tval,pval] = limo_ttest(1,x1,x2,.05);
-        else
+        elseif strcmpi(dpt, 'idpt')
             [~,~,~,~,~,tval,pval] = limo_ttest(2,x1,x2,.05);
+        else
+            errordlg("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
         end
     else
         errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
     end
-    results(iChan,:,1) = tval;
-    results(iChan,:,2) = pval;
+    tvals(iChan,:) = tval;
+    pvals(iChan,:) = pval;
 
     progressbar(iChan / size(data1,1))
 end
@@ -76,11 +83,11 @@ boot_index = zeros(size(data1,3),nboot);
 disp('Generating boot table (H0)...')
 while b ~= nboot + 1
     tmp = randi(size(data1,3),size(data1,3),1);
-    if length(unique(tmp)) >= 4   % minimum number of subjects 
+    if length(unique(tmp)) >= 4   % minimum number of subjects/trials
         boot_index(:,b) = tmp;
         b = b + 1;
     else
-        error('Not enough subjects, minimum is 4 for degrees of freedom >= 3')
+        errordlg('Not enough subjects, minimum is 4 for degrees of freedom (i.e. n = 3)')
     end
 end
 clear tmp
@@ -100,7 +107,8 @@ else
 end
 
 % Estimate H0 for each channel using ttests on null data
-results_H0 = NaN(size(data1,1), size(data1,2), 2, nboot);
+tvals_H0 = NaN(size(data1,1), size(data1,2), nboot);
+pvals_H0 = NaN(size(data1,1), size(data1,2), nboot);
 disp('Running statistical tests on H0 data...');
 for iChan = 1:size(data1,1)
     disp(['Estimating H0 for channel ' num2str(iChan) '/' num2str(size(data1,1))])
@@ -111,24 +119,29 @@ for iChan = 1:size(data1,1)
     
     parfor b = 1:nboot
         if strcmpi(method,'trimmed Mean')
-            if dpt
+            if strcmpi(dpt, 'dpt')
                 [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for depedent variables
-            else
+            elseif strcmpi(dpt, 'idpt')
                 [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for indepedent variables
-            end
-        elseif strcmpi(method,'mean')
-            if dpt
-			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(1,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for depedent variables
             else
+                errordlg("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+            end
+
+        elseif strcmpi(method,'mean')
+            if strcmpi(dpt, 'dpt')
+			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(1,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for depedent variables
+            elseif strcmpi(dpt, 'idpt')
 			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(2,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for independent variables
+            else
+                errordlg("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
             end
         else
-            errordlg('The method input must be ''mean'' or ''trimmed mean'' ')
+            errordlg("The method input must be 'mean' or 'trimmed mean'")
         end
     end
     for b = 1:nboot
-        results_H0(iChan,:,1,b) = tval{b};
-        results_H0(iChan,:,2,b) = pval{b};
+        tvals_H0(iChan,:,b) = tval{b};
+        pvals_H0(iChan,:,b) = pval{b};
     end
 end
 

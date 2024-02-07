@@ -1,7 +1,10 @@
 %% Plots results using correction for multiple comparison masks
 %
 % Usage:
-%    plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+%    [peakClust, peakChan, peakLat] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+% 
+% Example:
+%   [peakClust, peakChan, peakLat] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 %
 % Cedric Cannard, Sep 2022
 
@@ -56,11 +59,11 @@ if sum(mask,'all') > 0
     % Print in command window
     for iClust = 1:n_cluster
         if strcmpi(datatype, 'time')
-            fprintf('Cluster %g: %g-%g ms. Peak effect: channel %s at %g ms (t = %g) \n', ...
+            fprintf('Cluster %g: %g to %g ms. Peak effect: channel %s at %g ms (t = %g) \n', ...
                 iClust, xaxis(cluster_start(idx(iClust))), xaxis(cluster_end(idx(iClust))), ...
                 chanlocs(cluster_maxe(idx(iClust))).labels, xaxis(cluster_maxf(idx(iClust))), round(cluster_maxv(idx(iClust)),1) );
         elseif strcmpi(datatype, 'frequency')
-            fprintf('Cluster %g: %g-%g Hz. Peak effect: channel %s at %g Hz (t = %g) \n', ...
+            fprintf('Cluster %g: %g to %g Hz. Peak effect: channel %s at %g Hz (t = %g) \n', ...
                 iClust, xaxis(cluster_start(idx(iClust))), xaxis(cluster_end(idx(iClust))), ...
                 chanlocs(cluster_maxe(idx(iClust))).labels, xaxis(cluster_maxf(idx(iClust))), round(cluster_maxv(idx(iClust)),1) );
         end
@@ -83,18 +86,40 @@ if sum(mask,'all') > 0
     % Image all channels and time/frequency data
     subplot(3,3,[1 2 4 5 7 8]);
     imagesc(xaxis,1:size(effects,1),effects);
-    cmap = colormap(gca, color_images(effects)); % colormap('parula')
-    set(gca,'LineWidth',1)
-    colorbar;
-    if contains(datatype,{'time','time-frequency'})
-        xlabel('Time (ms)','FontSize',11,'FontWeight','bold')
-    elseif strcmpi(datatype,'frequency')
-        xlabel('Frequency (Hz)','FontSize',11,'FontWeight','bold')
+    load("colormap_bwr.mat");
+    % load("colormap_bgy.mat");
+    % dmap = colormap("bone"); % "winter" "hot" 
+    if sum(isnan(effects(:))) ~= 0
+        dmap(1,:) = [.9 .9 .9]; % set NaNs to gray
     end
+    colormap(gca, dmap); % colormap('parula')
+
+    set(gca,'LineWidth',1)
+    c = colorbar;
+    ylabel(c, 'T-values','FontWeight','bold','FontSize',12,'Rotation',-90)
+    % set(findall(gcf,'type','axes'),'fontSize',12,'fontweight','bold');
+
+    % Y labels (EEG channels or brain areas)
+    if contains(datatype,{'time','time-frequency'})
+        xlabel('Time (ms)','FontSize',13,'FontWeight','bold')
+    elseif strcmpi(datatype,'frequency')
+        xlabel('Frequency (Hz)','FontSize',13,'FontWeight','bold')
+    end
+
+    % Y tick labels (electrode or area names)
     if strcmpi(datatype,'time-frequency')
-        ylabel('Frequency (Hz)','FontSize',11,'FontWeight','bold')
+        ylabel('Frequency (Hz)','FontSize',13,'FontWeight','bold')
     else
-        ylabel('Channels','FontSize',11,'FontWeight','bold');
+        % For scalp channels
+        ylabel('EEG channels','FontSize',13,'FontWeight','bold');
+
+        % For Brain areas
+        % ylabel('Brain areas','FontSize',14,'FontWeight','bold');
+        % for i = 1:length(chanlocs)
+        %     chanlocs(i).labels = char(join(split(chanlocs(i).labels,'_')));
+        % end
+        
+        % Add labels to plot
         Ylabels = {chanlocs.labels};
         % img_prop = get(gca);
         % newticks = round(linspace(1,length(Ylabels),length(img_prop.YTick)*2));
@@ -102,10 +127,10 @@ if sum(mask,'all') > 0
         newticks = unique(newticks);
         Ylabels  = Ylabels(newticks);
         set(gca,'YTick',newticks);
-        set(gca,'YTickLabel', Ylabels);
+        set(gca,'YTickLabel', Ylabels,'FontWeight','bold');
     end
     correctoptions = {'Uncorrected' 'Max-corrected' 'Cluster-corrected' 'TFCE-corrected'};
-    title(sprintf('%s (p<%g)', correctoptions{mcctype+1},alpha),'FontSize',11,'FontWeight','bold');
+    title(sprintf('%s (p<%g)', correctoptions{mcctype+1},alpha),'FontSize',13,'FontWeight','bold');
 
     % Clim
     try
@@ -127,10 +152,10 @@ if sum(mask,'all') > 0
     peakChan = cluster_maxe(maxEffect);
     plot(xaxis,stats(peakChan,:),'LineWidth',2);
     chanLabel = chanlocs(peakChan).labels;
+    title(sprintf('Course plot: %s',chanLabel),'FontSize',11,'fontweight','bold')
     % plot(xaxis,stats(cluster_maxe,:),'LineWidth',2);  % plot peak effect of all clusters superimposed
     % chanLabel = {chanlocs(cluster_maxe).labels};
     % legend(chanLabel)
-    title(sprintf('Course plot: %s',chanLabel),'FontSize',11,'fontweight','bold')
     grid on; axis tight;
     ylabel('t-values','FontSize',11,'fontweight','bold'); 
     xlabel('Frequency (Hz)','FontSize',11,'fontweight','bold')
@@ -138,23 +163,27 @@ if sum(mask,'all') > 0
 
     %% Scalp topography at peak latency/frequency (replace with 3D headplot?)
 
-    subplot(3,3,6);
-    % figure('Color','w')
     peakLat = cluster_maxf(maxEffect);
-    topoplot(stats(:, peakLat), chanlocs,'emarker', {'.','k',5,1}, ...             % normal electrodes
-        'emarker2',{find(mask(:, peakLat)),'.',"red",15,1}, ...    % significant electrodes
-        'maplimits','maxmin','verbose','off','colormap',cmap);                                                      % parameters
-    if strcmpi(datatype, 'time')
-        title(sprintf('Topography: %g ms', xaxis(peakLat)), ...
-            'FontSize',11,'fontweight','bold');
-    elseif strcmpi(datatype, 'frequency')
-        title(sprintf('Topography: %g Hz', xaxis(peakLat)), ...
-            'FontSize',11,'fontweight','bold');
-    end
 
-    % Adjust labels and ticks fint and weight for all plots
-    % set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
-    set(gcf,'color','w')
+    % figure
+
+    subplot(3,3,6);
+    topoplot(stats(:, peakLat), chanlocs,'emarker',{'.','k',5,1}, ...             % normal electrodes
+        'emarker2',{find(mask(:, peakLat)),'.',"red",7,1}, ...    % significant electrodes
+        'maplimits','maxmin','verbose','off','colormap',dmap);                                                      % parameters
+    if strcmpi(datatype, 'time')
+        title(sprintf('Scalp topography: %g ms', xaxis(peakLat)), ...
+            'FontSize',13,'fontweight','bold');
+    elseif strcmpi(datatype, 'frequency')
+        title(sprintf('Scalp topography: %g Hz', xaxis(peakLat)), ...
+            'FontSize',13,'fontweight','bold');
+    end
+    set(gcf,'Name','Scalp topography at peak frequency','color','w','Toolbar','none','Menu','none','NumberTitle','Off')
+
+
+    %% Adjust labels and ticks font and weight for all plots
+    set(gcf,'Name','Results','color','w','Toolbar','none','Menu','none','NumberTitle','Off')
+    set(findall(gcf,'type','axes'),'fontSize',12,'fontweight','bold');
 
 else
     disp('Nothing to plot (nothing is significant)')

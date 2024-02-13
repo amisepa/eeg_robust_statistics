@@ -1,17 +1,12 @@
 %% Cluster-correction of mass-univariate EEG data
 % 
-% Usage:
-%   [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
-% 
 % Cedric Cannard, Sep 2022
 
 function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
 
 % [mask,M] = limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p); % for t-test only
-
-% fig = 0;
-tvals = tvals.^2;
-tvals_H0 = tvals_H0.^2;
+% tvals = tvals.^2;
+% tvals_H0 = tvals_H0.^2;
 
 % if 1 channel, force switch to 1D TFCE clustering
 if size(tvals,1) == 1
@@ -155,7 +150,7 @@ if mcctype == 2 && size(tvals_H0,1) > 1
         for C = nposclusters:-1:1 % compute cluster sums & compare to bootstrap threshold
             maxval(C) = sum(tvals(posclusterslabelmat==C));
             if  maxval(C)>= max_th
-                mask(posclusterslabelmat==C) = cluster_label; % flag clusters above threshold
+                mask(posclusterslabelmat==C)= cluster_label; % flag clusters above threshold
                 cluster_label = cluster_label+1;
             end
         end
@@ -201,9 +196,11 @@ end
 % Temporal clustering only (1 electrode)
 if mcctype == 2 && size(tvals_H0,1) == 1 || mcctype == 3
     disp('Applying temporal clustering...')
+    
     % 1st get the distribution of maxima under H0
     [th, boot_maxclustersum] = limo_ecluster_make(squeeze(tvals_H0),squeeze(pvals_H0),pthresh);
     max_th = th.elec;
+
     % 2nd threshold observed data
     [sigcluster, pcorr, maxval] = limo_ecluster_test(squeeze(tvals),squeeze(pvals),th,pthresh, boot_maxclustersum);
     mask = sigcluster.elec_mask;
@@ -218,8 +215,8 @@ if sum(mask(:)) == 0
     plot(find(mass == max_th,1), max_th, 'r*', 'LineWidth',5)
     txt = ['bootstrap threashold ' num2str(max_th) '\rightarrow'];
     text(find(mass == max_th,1), max_th, txt, 'FontSize', 10, 'HorizontalAlignment','right');
-    
-    [val,loc] = min(abs(mass-maxval));
+
+    [~,loc] = min(abs(mass-maxval));
     plot(loc,maxval,'r*','LineWidth',5)
     txt = ['Biggest cluster mass observed: ' num2str(maxval) '\rightarrow'];
     text(loc,double(maxval),txt,'FontSize',10,'HorizontalAlignment','right');

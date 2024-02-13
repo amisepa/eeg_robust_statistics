@@ -159,7 +159,8 @@ if sum(mask,'all') > 0
     grid on; axis tight;
     ylabel('t-values','FontSize',11,'fontweight','bold'); 
     xlabel('Frequency (Hz)','FontSize',11,'fontweight','bold')
-    plotSigBar(mask(peakChan,:)==maxEffect,xaxis);
+    % plotSigBar(mask(peakChan,:)==maxEffect,xaxis);
+    plotSigBar(mask(peakChan,:)~=0,xaxis);
 
     %% Scalp topography at peak latency/frequency (replace with 3D headplot?)
 

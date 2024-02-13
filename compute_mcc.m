@@ -69,7 +69,7 @@ switch mcctype
         tfce_H0_thmaps = cell(1,nboot);
         tfce_H0_score = nan(size(tvals_H0,1),size(tvals_H0,2),nboot);
         parfor b = 1:nboot
-            disp(['boot ' num2str(b) '/' num2str(nboot)])
+            fprintf('TFCE boot %g/%g \n', b,nboot)
             [tfce_H0_score(:,:,b), tfce_H0_thmaps{b}] = limo_tfce(ndim, squeeze(tvals_H0(:,:,b)), neighbormatrix,0);
         end
 

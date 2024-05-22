@@ -1,14 +1,14 @@
 %% Plots results using correction for multiple comparison masks
 %
 % Usage:
-%    [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+%    [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 % 
 % Example:
-%   [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+%   [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 %
 % Cedric Cannard, Sep 2022
 
-function [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+function [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 % Look up limo_display_image_tf for time-frequency data
 
 peakClust = [];

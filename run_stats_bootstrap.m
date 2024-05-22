@@ -17,7 +17,7 @@
 %
 % Cedric Cannard, Sep 2022
 
-function [tvals,pvals,tvals_H0,pvals_H0] = compute_randomeffect(data1,data2,nBoot,method,dpt)
+function [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(data1,data2,nBoot,method,dpt)
 
 % Check input parameters
 if nargin < 3 || isempty(nBoot)
@@ -187,4 +187,4 @@ for iChan = 1:nChan
 
 end
 
-disp('Random effects computed under H0.')
+disp('Boostrap statistics completed.')

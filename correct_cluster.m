@@ -4,12 +4,12 @@
 
 function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
 
-% [mask,M] = limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p); % for t-test only
-% tvals = tvals.^2;
-% tvals_H0 = tvals_H0.^2;
+tvals = tvals.^2;
+tvals_H0 = tvals_H0.^2;
 
 % if 1 channel, force switch to 1D TFCE clustering
 if size(tvals,1) == 1
+	warning("only one EEG channel detected. Switching to TFCE correction");
     mcctype = 3; % TFCE 
 end
 
@@ -24,7 +24,6 @@ if mcctype == 2 && size(tvals_H0,1) > 1
 
     parfor boot = 1:nboot
         % Find the cluster, thresholding H0 pvalues <= threshold p
-%         [cluster,nClusters] = limo_findcluster(pvals_H0(:,:,boot) <= pthresh,neighbormatrix,minchan);
         sigPvals = pvals_H0(:,:,boot) <= pthresh;
         spatdimlength = size(sigPvals, 1);
         nfreq         = size(sigPvals, 2);
@@ -80,10 +79,10 @@ if mcctype == 2 && size(tvals_H0,1) > 1
                         continue;
                     elseif replaceby(a)<replaceby(b)
                         % replace all entries with content replaceby(b) by replaceby(a).
-                        replaceby(find(replaceby==replaceby(b))) = replaceby(a);
+                        replaceby(replaceby==replaceby(b)) = replaceby(a);
                     elseif replaceby(b)<replaceby(a)
                         % replace all entries with content replaceby(a) by replaceby(b).
-                        replaceby(find(replaceby==replaceby(a))) = replaceby(b);
+                        replaceby(replaceby==replaceby(a)) = replaceby(b);
                     end
                 end
             end
@@ -119,11 +118,6 @@ if mcctype == 2 && size(tvals_H0,1) > 1
         end
     end
 
-    % 3rd threshold observed cluster mass by the distribution of cluster max computed in step 2
-    %%%%%%%%%%%%%%%%%%%%%%%%%% cluster_test %%%%%%%%%%%%%%%%%%%%%%
-%     [mask, pcorr, maxval, max_th] = cluster_test(tvals,pvals,boot_maxclustersum,neighbormatrix,minchan,pthresh);
-%     function [mask, pval, maxval, maxclustersum_th] = cluster_test(ori_f,ori_p,boot_maxclustersum,channeighbstructmat,minnbchan,alphav)
-    
     % find clusters in the observed data
     [posclusterslabelmat,nposclusters] = limo_findcluster(pvals<=pthresh,neighbormatrix,minchan);
     
@@ -190,7 +184,6 @@ if mcctype == 2 && size(tvals_H0,1) > 1
     else
          maxval = 0;
     end
-    %%%%%%%%%%%%%%% end of cluster_test %%%%%%%%%%%%%%%%
 end
 
 % Temporal clustering only (1 electrode)

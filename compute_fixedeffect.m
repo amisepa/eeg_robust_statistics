@@ -3,81 +3,56 @@
 % Cedric Cannard, Oct 2022
 
 clear; close all; clc;
-dataDir = 'C:\Users\IONSLAB\Desktop\channeling_matlab\data\data_processed2';
-studypath = 'G:\My Drive\HLM\limo';
-addpath('G:\My Drive\HLM')
+dataDir = 'C:\Users\Tracy\Desktop\data';
 cd(dataDir)
-tmpSub = dir;
-idx = contains({tmpSub.name},'sub');
-tmpSub = {tmpSub(idx).name}';
-mkdir(studypath); cd(studypath)
+filenames = dir; filenames = {filenames.name}';
+filenames(~contains(filenames,'sub')) = [];
 eeglab; close;
-pop_editoptions('option_single',0); % double precision on (1) or off (0)
-pop_editoptions('option_parallel',0); %  parallel computing on (1) or off (0)
 
-% % Create study
-% commands = {};
-% for iSub = 1:5
-%     disp('--------------------------------------------')
-%     disp(['Subject ' num2str(iSub) ])
-%     disp('--------------------------------------------')
-% 
-%     EEG = pop_loadset('filename', sprintf('sub-%2.2d.set',iSub),'filepath',fullfile(dataDir,sprintf('sub-%2.2d',iSub)));
-%     EEG.saved = 'no';
-%     EEG.session = 1;
-%     allpaths(iSub,:) = { fullfile(studypath,EEG.subject) }; 
-%     mkdir(allpaths{iSub})
-%     allsub(iSub,:) = { sprintf('sub-%2.2d_ses-%d',iSub,EEG.session) };
-%     pop_saveset(EEG,'filepath',allpaths{iSub},'filename', [allsub{iSub} '.set']);
-%     commands = [ commands(:)' 'index' iSub 'load' fullfile(allpaths{iSub}, [allsub{iSub} '.set']) ];
-%     [STUDY, ALLEEG] = std_editset(STUDY,ALLEEG,'name','test','commands', commands, ...
-%         'updatedat','on','savedat','off','rmclust','off');
-%     [STUDY, ALLEEG] = std_checkset(STUDY, ALLEEG); CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
-% end
-% [STUDY, EEG] = pop_savestudy(STUDY,EEG,'filename','test.study','filepath',studypath);
-% CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
+nSub = length(filenames);
+commands = {};
+for iSub = 1:nSub
+        filepath = fullfile(dataDir,filenames{iSub});
+        filename = sprintf('%s.set',filenames{iSub});
+        % EEG = pop_loadset(fullfile(filepath,filename));
+        % EEG = pop_resample(EEG,100);
+        % pop_saveset(EEG,fullfile(filepath,filename));
 
-% % Make study design
-% conditions = unique({ALLEEG(1).event.type});
-% STUDY = std_makedesign(STUDY,ALLEEG,1,'name','STUDY.design 1','delfiles','off', 'defaultdesign','off', ...
-%     'variable1','type','values1',conditions,'vartype1','categorical', ...
-%     'subjselect',allsub);
-% [STUDY, EEG] = pop_savestudy(STUDY, EEG, 'savemode','resave');
-% CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
+        commands = [ commands(:)' 'index' iSub 'load' fullfile(filepath, filename)];
+        [STUDY, ALLEEG] = std_editset(STUDY,ALLEEG,'name','study', ...
+            'commands',commands,'updatedat','on','savedat','off','rmclust','off');
+        [STUDY, ALLEEG] = std_checkset(STUDY, ALLEEG);
+        EEG = ALLEEG;
+end
 
-% % Compute PSD
-% [STUDY, ALLEEG] = std_precomp(STUDY,ALLEEG,{},'savetrials','on', ...
-%     'rmicacomps','off', 'interp','off','recompute','on','spec','on', ...
-%     'specparams',{'specmode','psd','logtrials','on','freqrange',[1 15]});
-% CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
-% [STUDY, EEG] = pop_savestudy(STUDY, EEG, 'savemode','resave');
-% % cd(studypath)
-
-% Load study
-[STUDY, ALLEEG] = pop_loadstudy('filename','test.study','filepath',studypath);
+STUDY.filename = 'study';
+STUDY.filepath = dataDir;
+STUDY = std_makedesign(STUDY, ALLEEG, 1, 'name','STUDY.design 1','delfiles','off', ...
+    'defaultdesign','off','variable1','type','values1',{'2','4'}, ...
+    'vartype1','categorical','subjselect',{ALLEEG.subject});
+[STUDY, ALLEEG] = std_precomp(STUDY, ALLEEG, {},'savetrials','on', ...
+    'recompute','on','erp','on','erpparams',{'rmbase',[-800 -100]});
 CURRENTSTUDY = 1; EEG = ALLEEG; CURRENTSET = 1:length(EEG);
+pop_savestudy(STUDY,EEG,'filename','study.study','filepath',dataDir);
 
-% % Basic stats (FDR-correction, permutations, 95% HDI)
-% STUDY = pop_statparams(STUDY, 'condstats','on','method','perm','mcorrect','fdr','alpha',0.05);
-% STUDY = pop_specparams(STUDY, 'plotconditions','together','freqrange',[1 10] ,'averagechan','on');
-% for iChan = 1:ALLEEG(1).nbchan
-%     disp(num2str(iChan))
-%     [STUDY, specdata, specfreqs, pgroup(iChan,:,:), pcond(iChan,:,:)] = std_specplot(STUDY,ALLEEG, ...
-%         'channels',{ALLEEG(1).chanlocs(iChan).labels},'design',1,'noplot','on');   
-%     cond1(iChan,:,:) = specdata{1}; % condition 1
-%     cond2(iChan,:,:) = specdata{2}; % condition 2
-% end
-% chantoplot = 30;
-% plotHDI(specfreqs', squeeze(cond1(chantoplot,:,:)), squeeze(cond2(chantoplot,:,:)), ...
-%     'Trimmed mean', 'dependent', .05, pcond{chantoplot}', 'rest', 'trance', 'Trimmed mean & 95% HDI');
+
+%% Run LIMO
+tlims = [-100 800];
+pop_limo(STUDY, ALLEEG,'method','WLS','measure','daterp', ...
+    'timelim', tlims,'erase','on','splitreg','off','interaction','off');
+
 
 %% 1st level: Fixed effects
 
-folder = fileparts(which('run_hlm.m'));
-addpath(genpath(folder))
+[STUDY, ALLEEG] = pop_loadstudy('filename', 'study.study', 'filepath', 'C:\Users\Tracy\Desktop\data');
 
-freqlim = [1 15];                                   % default = [], [1 30]
-model.measure = 'datspec';                          % 'daterp', 'datspec', 'dattimef', 'icaerp', 'icaspec', 'icatimef'
+% folder = fileparts(which('run_hlm.m'));
+% addpath(genpath(folder))
+addpath('C:\Users\Tracy\Documents\MATLAB\eeglab\plugins\limo_tools\external\psom')
+
+model = [];
+% model.measure = 'datspec';                          % 'daterp', 'datspec', 'dattimef', 'icaerp', 'icaspec', 'icatimef'
+model.measure = 'daterp';                          % 'daterp', 'datspec', 'dattimef', 'icaerp', 'icaspec', 'icatimef'
 model.method = 'WLS';                               % 'OLS', 'IRLS', 'WLS' (default)
 model.datatype = 'Channels';
 model.defaults.method = 'WLS';              
@@ -87,7 +62,7 @@ model.defaults.fullfactorial = 0;                   % all variables
 model.defaults.zscore = 1;                          % 0 or 1 (default)
 model.splitreg = 'off';
 model.interaction = 'off';
-model.design = STUDY.currentdesign;
+model.design = 1;           % design number (edited in STUDY)
 model.defaults.type = 'Channels';
 % model.defaults.datatype = model.measure(4:end);
 
@@ -112,10 +87,16 @@ if model.defaults.level == 1
     model.defaults.bootstrap        = 0 ;                   % only for single subject analyses
     model.defaults.tfce             = 0;                    % only for single subject analyses
 end
+
+if strcmpi(model.measure, 'daterp')
+    model.defaults.analysis = 'Time';
+
+end
+
 if strcmpi(model.measure, 'datspec')
     model.defaults.analysis = 'Frequency';
-    model.defaults.lowf    = freqlim(1);
-    model.defaults.highf   = freqlim(2);
+    model.defaults.lowf    = 1;   % lower bound of spectrum
+    model.defaults.highf   = 30;  % higher bound of spectrum
     model.defaults.start = [];
     model.defaults.end   = [];
 end
@@ -144,13 +125,15 @@ nSub = length(uniqueSub);
 allSess(cellfun(@isempty, allSess)) = { 1 };
 allSess = cellfun(@num2str, allSess, 'uniformoutput', false);
 uniqueSess = unique(allSess);
-factors = pop_listfactors(STUDY.design(model.design), 'gui', 'off', 'level', 'one');
+factors = pop_listfactors(STUDY.design(model.design),'gui','off', ...
+    'splitreg',model.splitreg,'interaction',model.interaction,'level','one', ...
+    'constant','on');
 
 % Channel neighbors
 % STUDY.etc.statistics.fieldtrip.channelneighbor = neighbors; % for plot
 chanlocs = ALLEEG(1).chanlocs;
 nChan = ALLEEG(1).nbchan;
-[neighbors, neighbormatrix] = get_channelneighbors(chanlocs,0);
+[neighbors, neighbormatrix] = get_channelneighbors(chanlocs);
 
 % Build statistical models
 for iSub = 1:nSub
@@ -260,14 +243,14 @@ end
 % of variables (contrasts are then a weighted sum of the crossed factors)
 if ~isempty(factors) && isfield(factors, 'value') && sum(arrayfun(@(x) ~strcmpi(x.label,'group'), STUDY.design(model.design).variable)) == 1 % only one non-continuous variable other than group
     if length(STUDY.design(model.design).variable(1).value) ~= length(factors) % and this var has more values than the number of factors
-        limocontrast = zeros(length(STUDY.design(opt.design).variable(1).value),length(factors)+1); % length(factors)+1 to add the constant
+        limocontrast = zeros(length(STUDY.design(model.design).variable(1).value),length(factors)+1); % length(factors)+1 to add the constant
         for n=length(factors):-1:1
             factor_names{n} = factors(n).value;
         end
 
-        index = find(arrayfun(@(x) ~strcmpi(x.label,'group'),STUDY.design(opt.design).variable)); % which one is not group
-        for c = 1:length(STUDY.design(opt.design).variable(index).value)
-            limocontrast(c,1:length(factors)) = single(ismember(factor_names,STUDY.design(opt.design).variable(index).value{c}));
+        index = find(arrayfun(@(x) ~strcmpi(x.label,'group'),STUDY.design(model.design).variable)); % which one is not group
+        for c = 1:length(STUDY.design(1).variable(index).value)
+            limocontrast(c,1:length(factors)) = single(ismember(factor_names,STUDY.design(model.design).variable(index).value{c}));
             limocontrast(c,1:length(factors)) = limocontrast(c,1:length(factors)) ./ sum(limocontrast(c,1:length(factors))); % scale by the number of variables
         end
     end
@@ -279,6 +262,7 @@ model.cont_files = model.cont_files';
 if all(cellfun(@isempty, model.cat_files )), model.cat_files  = []; end
 if all(cellfun(@isempty, model.cont_files)), model.cont_files = []; end
 
+% Run GLM
 [LIMO_files, procstatus] = limo_batch('model specification',model,[],STUDY);
 % limo_batch 
 % psom_run_pipeline
@@ -287,7 +271,7 @@ if all(cellfun(@isempty, model.cont_files)), model.cont_files = []; end
 % psom_run_job
 % import: line 128 - limo_batch_import_data
 % design: line 128 - 
-% gm: line128 - 
+% glm: line128 - 
 
 STUDY.limo.model = model;
 STUDY.limo.datatype = model.defaults;

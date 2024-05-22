@@ -1,15 +1,20 @@
 %% Plots results using correction for multiple comparison masks
 %
 % Usage:
-%    [peakClust, peakChan, peakLat] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+%    [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 % 
 % Example:
-%   [peakClust, peakChan, peakLat] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+%   [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 %
 % Cedric Cannard, Sep 2022
 
-function [peakClust, peakChan, peakLat] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
+function [peakClust, peakChan, peakLat, clustOrder] = plotresults(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 % Look up limo_display_image_tf for time-frequency data
+
+peakClust = [];
+peakChan = [];
+peakLat = [];
+clustOrder = [];
 
 if isempty(mask)
     disp('Empty mask, computing one from corrected p-values.'); %return
@@ -53,7 +58,7 @@ if sum(mask,'all') > 0
     % cluster_start = cluster_start(idx);
     % cluster_end = cluster_end(idx);
     % [~, maxEffect] = max(abs(cluster_maxv)); % should be 1 now, but to be sure
-    
+    clustOrder = idx;  % to store order of strength
     peakClust = [cluster_start(idx(1)) cluster_end(idx(1)) ];
 
     % Print in command window
@@ -73,6 +78,8 @@ if sum(mask,'all') > 0
 
     figure('Color','w'); set(gcf,'InvertHardCopy','off');
 
+    subplot(3,3,[1 2 4 5 7 8]);
+
     % Extract significant t-values for plotting
     effects = stats.*single(mask>0);
     effects(effects==0) = NaN;
@@ -84,9 +91,11 @@ if sum(mask,'all') > 0
     % end
 
     % Image all channels and time/frequency data
-    subplot(3,3,[1 2 4 5 7 8]);
     imagesc(xaxis,1:size(effects,1),effects);
+
+    % Color palette
     load("colormap_bwr.mat");
+    % dmap = colormap("viridis");
     % load("colormap_bgy.mat");
     % dmap = colormap("bone"); % "winter" "hot" 
     if sum(isnan(effects(:))) ~= 0
@@ -114,7 +123,7 @@ if sum(mask,'all') > 0
         ylabel('EEG channels','FontSize',13,'FontWeight','bold');
 
         % For Brain areas
-        % ylabel('Brain areas','FontSize',14,'FontWeight','bold');
+        % ylabel('Brain areas','FontSize',13,'FontWeight','bold');
         % for i = 1:length(chanlocs)
         %     chanlocs(i).labels = char(join(split(chanlocs(i).labels,'_')));
         % end
@@ -133,23 +142,20 @@ if sum(mask,'all') > 0
     title(sprintf('%s (p<%g)', correctoptions{mcctype+1},alpha),'FontSize',13,'FontWeight','bold');
 
     % Clim
-    try
-        maxval = max(abs(effects(:)));
-        if max(effects(:)) < 0
-            clim([-maxval 0])
-        elseif min(effects(:)) > 0
-            clim([0 maxval])
-        else
-            clim([-maxval maxval])
-        end
-    catch caxiserror
-        fprintf('axis issue: %s\n',caxiserror.message)
-    end
+    maxval = max(abs(effects(:)));
+    % if max(effects(:)) < 0
+    %     clim([-maxval 0])
+    % elseif min(effects(:)) > 0
+    %     clim([0 maxval])
+    % else
+    clim([-maxval maxval])
+    % end
    
     %% Course plot of t-values of strongest effect
 
-    subplot(3,3,9);
     peakChan = cluster_maxe(maxEffect);
+
+    subplot(3,3,9);
     plot(xaxis,stats(peakChan,:),'LineWidth',2);
     chanLabel = chanlocs(peakChan).labels;
     title(sprintf('Course plot: %s',chanLabel),'FontSize',11,'fontweight','bold')
@@ -159,7 +165,8 @@ if sum(mask,'all') > 0
     grid on; axis tight;
     ylabel('t-values','FontSize',11,'fontweight','bold'); 
     xlabel('Frequency (Hz)','FontSize',11,'fontweight','bold')
-    % plotSigBar(mask(peakChan,:)==maxEffect,xaxis);
+
+    % Plot bars of significnace for peak electrode
     plotSigBar(mask(peakChan,:)~=0,xaxis);
 
     %% Scalp topography at peak latency/frequency (replace with 3D headplot?)
@@ -169,9 +176,12 @@ if sum(mask,'all') > 0
     % figure
 
     subplot(3,3,6);
-    topoplot(stats(:, peakLat), chanlocs,'emarker',{'.','k',5,1}, ...             % normal electrodes
-        'emarker2',{find(mask(:, peakLat)),'.',"red",7,1}, ...    % significant electrodes
-        'maplimits','maxmin','verbose','off','colormap',dmap);                                                      % parameters
+
+    % topoplot(stats(:, peakLat), chanlocs,'emarker',{'.','k',5,1}, ...             % normal electrodes
+    %     'emarker2',{find(mask(:, peakLat)),'.',"red",7,1}, ...    % significant electrodes
+    %     'verbose','off','colormap',dmap);                                                      % parameters
+    topoplot(stats(:, peakLat), chanlocs,'emarker2',{find(mask(:, peakLat)),'.','k',10,1}, ...    % significant electrodes
+        'verbose','off','colormap',dmap);                                                      % parameters
     if strcmpi(datatype, 'time')
         title(sprintf('Scalp topography: %g ms', xaxis(peakLat)), ...
             'FontSize',13,'fontweight','bold');
@@ -179,12 +189,12 @@ if sum(mask,'all') > 0
         title(sprintf('Scalp topography: %g Hz', xaxis(peakLat)), ...
             'FontSize',13,'fontweight','bold');
     end
-    set(gcf,'Name','Scalp topography at peak frequency','color','w','Toolbar','none','Menu','none','NumberTitle','Off')
-
+    set(gcf,'Name','Topography at peak frequency','color','w','Toolbar','none','Menu','none','NumberTitle','Off')
 
     %% Adjust labels and ticks font and weight for all plots
+
     set(gcf,'Name','Results','color','w','Toolbar','none','Menu','none','NumberTitle','Off')
-    set(findall(gcf,'type','axes'),'fontSize',12,'fontweight','bold');
+    % set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
 
 else
     disp('Nothing to plot (nothing is significant)')

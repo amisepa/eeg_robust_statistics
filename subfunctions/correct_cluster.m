@@ -179,7 +179,7 @@ if mcctype == 2 && size(tvals_H0,1) > 1
     end
     pcorr(pcorr==1) = NaN;
     
-    % check again corrected p values are correct
+    % Check again corrected p values are correct
     if any(pcorr > pthresh)
        error('some corrected p-values are above the set alpha value, which should not happen - this is a bug') 
     end

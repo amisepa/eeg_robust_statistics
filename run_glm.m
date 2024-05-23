@@ -1,5 +1,22 @@
 %% Run GLM on EEG data
 % 
+% Vectorized approach to significantly increase
+% computation cost. Vectorized code performs matrix operations directly,
+% which are generally more efficient and less error-prone than iterating
+% through individual elements. Matrix multiplication and other linear
+% algebra operations in MATLAB are highly optimized.
+%
+% The core computations, such as the design matrix multiplication (XTWX, XTWY),
+% fitting the GLM (pinv(XTWX) * XTWY), and computing residuals (data_reshaped - Yhat),
+% are the same in both approaches.
+%
+% Some considerations:
+% Ensure the numerical precision and stability are maintained, especially
+% with operations like pseudoinverse (pinv). In some cases, the use of
+% regularization or other stabilization techniques may be necessary.
+% Ensure that edge cases (e.g., handling of zero or negative weights, rank
+% deficiency) are managed consistently in both approaches.
+% 
 % Optimization options: OLS, IRLS, WLS
 % 
 % WLS options

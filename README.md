@@ -15,5 +15,5 @@
 
 Raw ERP (no GLM)
 <p align="center" width="100%">
-    <img width="50%" src="https://github.com/amisepa/BrainBeats/blob/main/figures/result_unpleasant-neutral_RAW_corrected.png">
+    <img width="50%" src="https://github.com/amisepa/BrainBeats/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png">
 </p>

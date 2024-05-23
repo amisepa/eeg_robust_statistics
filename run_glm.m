@@ -50,7 +50,9 @@ if strcmp(optimization,'WLS')
         k = 1.345; % Tuning parameter for Huber's function
     elseif strcmpi(weight_method,'tukey')
         weight_method = 3;          % Tukey's Biweight
-    end        
+    else
+        error("You chose an unknown weighting method. Weighting method must be 'PCP', 'Hubert', or 'Tukey")
+    end
 end
 
 % trim time window of interest
@@ -159,10 +161,8 @@ switch optimization
             XTX = XTX + 1e-5 * eye(size(XTX));
         end
 
-        % Calculate betas
+        % Compute betas, fitted values, residuals
         betas = pinv(XTX) * XTY;
-
-        % Compute fitted values and residuals
         Yhat = design_matrix * betas;
         residuals = data_reshaped - Yhat;
 
@@ -204,10 +204,8 @@ switch optimization
                 XTWX = XTWX + 1e-5 * eye(size(XTWX));
             end
 
-            % betas
+            % Compute betas, fitted values and residuals
             betas = pinv(XTWX) * XTWY;
-
-            % Compute fitted values and residuals
             Yhat = design_matrix * betas;
             residuals = data_reshaped - Yhat;
 
@@ -229,8 +227,6 @@ switch optimization
 
     case 'WLS'
         disp("Running GLM using WLS optimization...")
-
-        % Calculate trial weights 
         
         % Using Cyril Pernet's principal components projection (PCP)
         if weight_method == 1
@@ -270,10 +266,8 @@ switch optimization
             XTWX = XTWX + 1e-5 * eye(size(XTWX));
         end
 
-        % Get the betas
+        % Compute betas, fitted values and residuals
         betas = pinv(XTWX) * XTWY;
-
-        % Compute fitted values and residuals
         Yhat = design_matrix * betas;
         residuals = data_reshaped - Yhat;
 

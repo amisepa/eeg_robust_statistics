@@ -156,45 +156,55 @@ chanlocs = EEG.chanlocs;
 save(fullfile(outDir,sprintf('GLM_%s.mat', optimization)),'times','chanlocs','BETAS','F','R2','P')
 save(fullfile(outDir,'RAW_ERP.mat'),'times','chanlocs','PLEASANT','NEUTRAL','UNPLEASANT')
 
-% Compare Raw ERP with GLM Betas for each condition (1=pleasant; 2=neutral; 3=unpleasant)
-plotHDI(times, squeeze(trimmean(PLEASANT,20,1)), squeeze(trimmean(BETAS(:,:,1,:),20,1)),'Trimmed mean',0.05,[],'raw','beta')
-subplot(2,1,1); title(sprintf('Pleasant (%s)',optimization))
-plotHDI(times, squeeze(trimmean(NEUTRAL,20,1)), squeeze(trimmean(BETAS(:,:,2,:),1)),'Trimmed mean',0.05,[],'raw','beta')
-subplot(2,1,1); title(sprintf('Neutral (%s)',optimization))
-plotHDI(times, squeeze(trimmean(UNPLEASANT,20,1)), squeeze(trimmean(BETAS(:,:,3,:),1)),'Trimmed mean',0.05,[],'raw','beta')
-subplot(2,1,1); title(sprintf('Unpleasant (%s)',optimization))
+% % Compare Raw ERP with GLM Betas for each condition (1=pleasant; 2=neutral; 3=unpleasant)
+% plotHDI(times, squeeze(trimmean(PLEASANT,20,1)), squeeze(trimmean(BETAS(:,:,1,:),20,1)),'Trimmed mean',0.05,[],'raw','beta')
+% subplot(2,1,1); title(sprintf('Pleasant (%s)',optimization))
+% plotHDI(times, squeeze(trimmean(NEUTRAL,20,1)), squeeze(trimmean(BETAS(:,:,2,:),1)),'Trimmed mean',0.05,[],'raw','beta')
+% subplot(2,1,1); title(sprintf('Neutral (%s)',optimization))
+% plotHDI(times, squeeze(trimmean(UNPLEASANT,20,1)), squeeze(trimmean(BETAS(:,:,3,:),1)),'Trimmed mean',0.05,[],'raw','beta')
+% subplot(2,1,1); title(sprintf('Unpleasant (%s)',optimization))
 
-%% Run mass-univariate analysis and nonparametric statistics with spatiotemporal
-% cluster correction, to compare the effects at the group level, as if we
+% Run mass-univariate analysis + nonparametric statistics + spatiotemporal
+% cluster correction to compare the effects at the group level, as if we
 % ran a study. 
 
 nBoots = 1000;  % number of bootstrap iterations
 corr = 2;       % cluster-corrected
+alpha_lvl = 0.01;
 
 % Compare Unpleasant (Beta #3) vs Neutral (Beta #2) conditions
 [~, neighbormatrix] = get_channelneighbors(chanlocs);
 [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(squeeze(BETAS(:,:,3,:)), squeeze(BETAS(:,:,2,:)), nBoots, 'trimmed mean', 'dpt');
 % save(fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s-%s.mat',optimization,weightmethod)),'times','chanlocs','tvals','tvals_H0','pvals','pvals_H0','-v7.3')
-[mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, corr, 0.05, neighbormatrix);
-[peakClust, peakChan, peakLat, clustOrder] = plot_results('time', times, tvals, mask, pcorr, 0.05, chanlocs, 2); 
-print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s-%s_corrected.png',optimization,weightmethod)),'-dpng','-r300');   % 300 dpi .png
+[mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, corr, alpha_lvl, neighbormatrix);
+[peakClust, peakChan, peakLat, clustOrder] = plot_results('time', times, tvals, mask, pcorr, alpha_lvl, chanlocs, 2); 
+if strcmpi(optimization,'WLS')
+    print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s-%s_corrected.png',optimization,weightmethod)),'-dpng','-r300');   % 300 dpi .png
+else
+    print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s_corrected.png',optimization)),'-dpng','-r300');   % 300 dpi .png
+end
 
 % Visualize the effect at the peak electrode
-plotHDI(times, squeeze(BETAS(peakChan,:,3,:)), squeeze(BETAS(peakChan,:,2,:)),'Trimmed mean',0.05,mask(peakChan,:)==clustOrder(1),'Unpleasant','Neutral')
+plotHDI(times, squeeze(BETAS(peakChan,:,3,:)), squeeze(BETAS(peakChan,:,2,:)),'Trimmed mean',alpha_lvl,mask(peakChan,:)==clustOrder(1),'Unpleasant','Neutral')
 subplot(2,1,1); title(sprintf('Channel %s (GLM %s %s)',chanlocs(peakChan).labels, optimization, weightmethod))
-print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s-%s_corrected_peak-channel.png',optimization,weightmethod)),'-dpng','-r300');   % 300 dpi .png
+if strcmpi(optimization,'WLS')
+    print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s-%s_corrected_peak-channel.png',optimization,weightmethod)),'-dpng','-r300');   % 300 dpi .png
+else
+    print(gcf, fullfile(outDir,sprintf('result_unpleasant-neutral_GLM_%s_corrected_peak-channel.png',optimization)),'-dpng','-r300');   % 300 dpi .png
+end
 
+gong
 
 %% Now do the same but for raw ERP to compare
 
 [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(UNPLEASANT, NEUTRAL, nBoots, 'trimmed mean', 'dpt');
 % save(fullfile(outDir,'result_unpleasant-neutral_RAW.mat'),'times','chanlocs','tvals','tvals_H0','pvals','pvals_H0','-v7.3')
-[mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, corr, 0.05, neighbormatrix);
-[peakClust, peakChan, peakLat, clustOrder] = plot_results('time', times, tvals, mask, pcorr, 0.05, chanlocs, 2); 
+[mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, corr, alpha_lvl, neighbormatrix);
+[peakClust, peakChan, peakLat, clustOrder] = plot_results('time', times, tvals, mask, pcorr, alpha_lvl, chanlocs, 2); 
 print(gcf, fullfile(outDir,'result_unpleasant-neutral_RAW_corrected.png'),'-dpng','-r300');   % 300 dpi .png
 
 % Visualize the effect at the peak electrode
-plotHDI(times, squeeze(UNPLEASANT(peakChan,:,:)), squeeze(NEUTRAL(peakChan,:,:)),'Trimmed mean',0.05,mask(peakChan,:)==clustOrder(1),'Unpleasant','Neutral')
-subplot(2,1,1); title(sprintf('Channel %s (Normal ERP)',chanlocs(peakChan).labels))
+plotHDI(times, squeeze(UNPLEASANT(peakChan,:,:)), squeeze(NEUTRAL(peakChan,:,:)),'Trimmed mean',alpha_lvl,mask(peakChan,:)==clustOrder(1),'Unpleasant','Neutral')
+subplot(2,1,1); title(sprintf('Channel %s (Raw ERP)',chanlocs(peakChan).labels))
 print(gcf, fullfile(outDir,'result_unpleasant-neutral_ERP_corrected_peak-channel.png'),'-dpng','-r300');   % 300 dpi .png
 

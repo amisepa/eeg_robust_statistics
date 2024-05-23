@@ -10,6 +10,8 @@
 
 - data visualization (mass-univariate, scalp topography, course plot)
 
+
 ## Comparing GLM/no-GLM results on ERP data (N = 78) 
 
 Raw ERP (no GLM)
+

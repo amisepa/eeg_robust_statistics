@@ -14,5 +14,5 @@
 ## Comparing GLM/no-GLM results on ERP data (N = 78) 
 
 # Raw ERP (no GLM)
-<p <img width="50%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png"> </p>
+<p src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png"> </p>
 

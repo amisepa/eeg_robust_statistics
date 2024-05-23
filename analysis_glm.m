@@ -78,6 +78,8 @@ for iSub = 1:nSub
     % ensure data and events have same number of trials
     event_types = {EEG.event.type};
     event_types = cellfun(@num2str, event_types, 'UniformOutput', false);  % ensure events are strings
+
+
     if length(event_types)~=size(data,3)
         warning("Event structure has different number of trials than EEG data. Trying to correct.")
         lats = [EEG.event.latency];
@@ -337,7 +339,6 @@ for iSub = 1:nSub
 end
 
 % Save GLM outputs
-chanlocs = EEG.chanlocs;
 save(fullfile(outDir,sprintf('GLM_%s.mat', optimization)),'times','chanlocs','BETAS','F','R2','P')
 save(fullfile(outDir,'RAW_ERP.mat'),'times','chanlocs','PLEASANT','NEUTRAL','UNPLEASANT')
 

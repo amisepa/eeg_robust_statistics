@@ -4,10 +4,11 @@
 %   (from the IAPS dataset)
 
 clear; close all; clc
-folder_dir = fileparts(which('run_stats_bootstrap'));
+main_dir = fileparts(which('run_stats_bootstrap'));
+
 disp("Loading ERP data and electrode locations...")
-load(fullfile(folder_dir,'ERP_data.mat'))
-load(fullfile(folder_dir,'chanlocs.mat'))
+load(fullfile(main_dir,'ERP_data.mat'))
+load(fullfile(main_dir,'chanlocs.mat'))
 
 %% Compute permutaton statistics
 
@@ -75,9 +76,8 @@ subplot(2,1,1); title(sprintf('Channel %s (Mean + 95%% HDIs)',chanlocs(peakChan)
 
 %% Perform GLM
 
-% clear; close all; clc;
-% dataDir = 'C:\Users\Tracy\Desktop\data';
-% outDir = fullfile(dataDir,'glm_poststim'); mkdir(outDir)
+% dataDir = 'path_to_data';
+out_dir = fullfile(main_dir,'outputs'); mkdir(out_dir)  % where to save outputs
 % eeglab; close;
 
 tlims = [-250 950];     % time window (in ms)

@@ -15,7 +15,6 @@
 
 Vectorized approach to significantly increase computation cost. Vectorized code performs matrix operations directly, which are generally more efficient and less error-prone than iterating through individual elements. Matrix multiplication and other linear algebra operations in MATLAB are highly optimized. The core computations, such as the design matrix multiplication (XTWX, XTWY), fitting the GLM (pinv(XTWX) * XTWY), and computing residuals (data_reshaped - Yhat), are the same in both approaches.
 
-
 Optimization options: OLS, IRLS, WLS
 
 WLS options
@@ -23,7 +22,8 @@ WLS options
 - Hubert M-estimator: Combines squared error for small residuals and absolute error for large residuals, offering a balance between efficiency and robustness.
 - Tukey's Biweight: Reduces the influence of outliers more aggressively by setting large residuals to zero weight.
 
-# Raw ERP (no GLM)
+
+### Raw ERP (no GLM)
 <img width="40%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png"> <img width="30%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected_peak-channel.png">
 
 Cluster 1: 228 to 948 ms. Peak effect: channel P3 at 436 ms (t = 14) 

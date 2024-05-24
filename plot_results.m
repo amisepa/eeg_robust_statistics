@@ -4,8 +4,8 @@
 %    [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
 % 
 % Example:
-%   [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)
-%
+%   [peakClust, peakChan, peakLat, clustOrder] = plot_results('time', times, tvals, mask, pcorr, 0.05, chanlocs, 0);
+% 
 % Cedric Cannard, Sep 2022
 
 function [peakClust, peakChan, peakLat, clustOrder] = plot_results(datatype, xaxis, stats, mask, pcorr, alpha, chanlocs, mcctype)

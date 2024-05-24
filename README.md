@@ -26,9 +26,10 @@ WLS options
 ### Raw ERP (no GLM)
 <img width="40%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png"> <img width="30%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected_peak-channel.png">
 
-Cluster 1: 228 to 948 ms. Peak effect: channel P3 at 436 ms (t = 14) 
+Cluster 1: 228 to 948 ms. Peak effect: channel P4 at 460 ms (t = 13.4) 
 
-Cluster 2: 132 to 216 ms. Peak effect: channel P8 at 156 ms (t = 5.7) 
+Cluster 2: 132 to 224 ms. Peak effect: channel P8 at 156 ms (t = 5.9) 
+
 
 ### GLM with OLS optimization
 <img width="40%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_GLM_OLS_corrected.png"> <img width="30%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_GLM_OLS_corrected_peak-channel.png">

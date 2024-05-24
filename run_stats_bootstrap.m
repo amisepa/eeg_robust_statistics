@@ -15,6 +15,9 @@
 %	tvals_H0    - t-values for H0 data
 %	pvals_H0    - p-values for H0 data
 %
+% EXAMPLE
+%   [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(data1,data2,nBoot,method,dpt)
+% 
 % Cedric Cannard, Sep 2022
 
 function [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(data1,data2,nBoot,method,dpt)

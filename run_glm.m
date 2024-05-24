@@ -35,6 +35,11 @@ if strcmp(optimization,'OLS') || strcmp(optimization,'IRLS')
     weight_method = [];
 end
 
+% Add an extra dimension if needed (one channel squeezed)
+if ndims(data) == 2 
+    data = reshape(data, 1, size(data, 1), size(data, 2));
+end
+
 % Convergence criteria for IRLS optimization
 if strcmp(optimization,'IRLS')
     max_iter = 100;
@@ -56,14 +61,15 @@ if strcmp(optimization,'WLS')
 end
 
 % trim time window of interest
-idx = times>=tlims(1) & times<=tlims(2);
-data = data(:,idx,:);
-times = times(idx);
+if ~isempty(tlims)
+    idx = times>=tlims(1) & times<=tlims(2);
+    data = data(:,idx,:);
+    times = times(idx);
+end
 
 % Data events
 event_types = {events.type};
 event_types = cellfun(@num2str, event_types, 'UniformOutput', false);  % ensure events are strings
-
 if length(event_types)~=size(data,3)
     warning("Event structure has different number of trials than EEG data. Trying to correct.")
     lats = [events.latency];

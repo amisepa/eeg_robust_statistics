@@ -5,8 +5,8 @@
 function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, mcctype, pthresh, neighbormatrix)
 
 % add path to subfunctions
-tmp = fileparts(which('compute_mcc'));
-addpath(fullfile(tmp,'subfunctions/'))
+% tmp = fileparts(which('compute_mcc'));
+% addpath(fullfile(tmp,'subfunctions/'))
 
 mask = [];
 pcorr = [];

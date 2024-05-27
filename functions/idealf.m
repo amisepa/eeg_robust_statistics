@@ -1,8 +1,7 @@
-function [ql,qu] = idealf(x)
-% [ql,qu] = idealf(x)
+function [ql,qu]=idealf(x)
 % Compute the ideal fourths for data in x
 % The estimate of the interquartile range is:
-% IQR = qu-ql;
+% IQR=qu-ql;
 % Adapted from Rand Wilcox's idealf R function, described in
 % Rand Wilcox, Introduction to Robust Estimation & Hypothesis Testing, 3rd
 % edition, Academic Press, Elsevier, 2012

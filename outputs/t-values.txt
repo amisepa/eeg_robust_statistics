@@ -1,0 +1,35 @@
+RAW ERP:
+2 significant clusters (cluster-corrected).
+Cluster 1: 228 to 948 ms. Peak effect: channel P3 at 436 ms (t = 14) 
+Cluster 2: 132 to 216 ms. Peak effect: channel P8 at 156 ms (t = 5.7) 
+
+OLS:
+2 significant clusters (cluster-corrected).
+Cluster 1: 228 to 948 ms. Peak effect: channel P4 at 460 ms (t = 13.4) 
+Cluster 2: 132 to 224 ms. Peak effect: channel P8 at 156 ms (t = 5.9) 
+
+IRLS: 
+cluster mass threshold: 30154
+2 significant clusters (cluster-corrected).
+Cluster 1: 228 to 948 ms. Peak effect: channel P3 at 448 ms (t = 13.7) 
+Cluster 2: 132 to 224 ms. Peak effect: channel O1 at 176 ms (t = 6.2) 
+
+WLS Tukey:
+2 significant clusters (cluster-corrected).
+Cluster 1: 232 to 948 ms. Peak effect: channel P4 at 460 ms (t = 13.9) 
+Cluster 2: 132 to 220 ms. Peak effect: channel O1 at 172 ms (t = 5.7) 
+
+WLS Hubert:
+2 significant clusters (cluster-corrected).
+Cluster 1: 228 to 948 ms. Peak effect: channel P3 at 448 ms (t = 13.7) 
+Cluster 2: 132 to 224 ms. Peak effect: channel O1 at 176 ms (t = 6) 
+
+WLS PCP:
+2 significant clusters (cluster-corrected).
+Cluster 1: 224 to 948 ms. Peak effect: channel P3 at 396 ms (t = 14) 
+Cluster 2: 152 to 212 ms. Peak effect: channel PO3 at 176 ms (t = 6) 
+
+
+
+
+

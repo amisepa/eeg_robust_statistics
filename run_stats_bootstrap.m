@@ -22,6 +22,10 @@
 
 function [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap(data1,data2,nBoot,method,dpt)
 
+% add path to subfunctions
+tmp = fileparts(which('run_stats_bootstrap'));
+addpath(fullfile(tmp,'functions'))
+
 % Check input parameters
 if nargin < 3 || isempty(nBoot)
     nBoot = 1000; % Default number of bootstraps

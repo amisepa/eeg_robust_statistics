@@ -29,14 +29,14 @@ end
 
 % Estimator 95% high-density intervals (HDI)
 fprintf('Computing estimator and high-density interval (HDI) for data 1... \n')
-[est1, HDI1] = compute_HDI(data1, method, 1-a);
+[est1, HDI1] = compute_HDI(data1, method, 1-a,'bayesian');
 fprintf('Computing estimator and high-density interval (HDI) for data 2... \n')
-[est2, HDI2] = compute_HDI(data2, method, 1-a);
+[est2, HDI2] = compute_HDI(data2, method, 1-a,'bayesian');
 
 % Difference
 fprintf('Computing estimator and high-density interval (HDI) for the difference... \n')
 if size(data1,2) == size(data2,2)    
-    [est3, HDI3] = compute_HDI(data1-data2,method,1-a);   
+    [est3, HDI3] = compute_HDI(data1-data2,method,1-a,'bayesian');   
 else
     warning('The two datasets have a different number of participants/trials, using inpendent method')
     est3 = est1-est2;
@@ -59,12 +59,12 @@ p1 = plot(xAxis,est1,'LineWidth',2,'Color', color1);
 patch([xAxis fliplr(xAxis)], [HDI1(1,:) fliplr(HDI1(2,:))], ...
     color1,'FaceAlpha',.3,'EdgeColor',color1,'EdgeAlpha',0.9);
 % set(gca,'FontSize',12,'layer','top'); 
-grid off; axis tight; hold on; box on
 
 % Data2 (mean + 95% HDI)
 p2 = plot(xAxis, est2,'LineWidth',2,'Color', color2);
 patch([xAxis fliplr(xAxis)], [HDI2(1,:) fliplr(HDI2(2,:))], ...
     color2,'FaceAlpha',.3,'EdgeColor',color2,'EdgeAlpha',0.9);
+grid off; axis tight; hold on; box on
 ylabel('Potential (uV)')
 title(sprintf('%s + %g%% HDI',method,(1-a)*100)); 
 
@@ -96,6 +96,7 @@ xlabel("Time (ms)",'FontSize',11,'FontWeight','bold')
 if ~isempty(h)
     plotSigBar(h, xAxis);
 end
+
 % legend([p1, p2], {data1Name,data2Name}, 'Location','SouthWest'); 
 legend([p1, p2], {data1Name,data2Name}); 
 

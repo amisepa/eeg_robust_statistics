@@ -31,16 +31,6 @@ if mcctype==3
     nBoot = size(tvals_H0,3);
 end
 
-% Parpool with max number of workers
-% delete(gcp('nocreate'))
-p = gcp('nocreate');
-if isempty(p)
-    c = parcluster; % cluster profile
-    N = getenv('NUMBER_OF_PROCESSORS'); % all processors (including threads)
-    N = str2double(N);
-    c.NumWorkers = N-1;  % update cluster profile to include all workers
-    c.parpool();
-end
 
 switch mcctype
 

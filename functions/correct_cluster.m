@@ -4,9 +4,6 @@
 
 function [mask, pcorr] = correct_cluster(tvals, pvals, tvals_H0, pvals_H0, neighbormatrix, mcctype, pthresh)
 
-tvals = tvals.^2;
-tvals_H0 = tvals_H0.^2;
-
 % if 1 channel, force switch to 1D TFCE clustering
 if size(tvals,1) == 1
 	warning("only one EEG channel detected. Switching to TFCE correction");

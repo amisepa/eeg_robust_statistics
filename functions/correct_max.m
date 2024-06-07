@@ -27,25 +27,22 @@ if nargin < 3
     pthresh   = 0.05;
 end
 
+% calculate max value for each boot
 [a,b,nboot] = size(tvals_H0);
-if any(size(tvals)~=[a b])
-    error('Dimension error: matrices of observed and bootstrap values are different')
-end
-
-% collect highest value for each boot
+maxval = nan(nboot,1);
 for boot = 1:nboot
     data = squeeze(tvals_H0(:,:,boot));
-    maxM(boot) = max(data(:)); 
+    maxval(boot) = max(data(:)); 
 end
 
-% get threshold
-maxM(maxM==Inf) = [];
-sortmaxM        = sort(maxM); 
+% caluculate threshold
+maxval(maxval==Inf) = [];
+sortmaxM        = sort(maxval); 
 nboot           = length(sortmaxM);
 U               = round((1-pthresh).*nboot);
 max_th          = sortmaxM(U);
 mask            = squeeze(tvals) >= max_th;
-fprintf('Max threshold = %g\n', max_th)
+fprintf('Maximum threshold = %g\n', max_th)
 
 % Get the equivalent bootstrapped p-value
 smalest_pval = 1/nboot;

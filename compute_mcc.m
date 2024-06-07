@@ -5,8 +5,8 @@
 function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, mcctype, pthresh, neighbormatrix)
 
 % add path to subfunctions
-% tmp = fileparts(which('compute_mcc'));
-% addpath(fullfile(tmp,'subfunctions/'))
+tmp = fileparts(which('compute_mcc'));
+addpath(fullfile(tmp,'functions/'))
 
 mask = [];
 pcorr = [];
@@ -56,7 +56,8 @@ switch mcctype
         % end
 
         % Get cluster mask and corrected p-values
-        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh); % limo_clustering(M.^2,Pval,bootM.^2,bootP,LIMO,MCC,p)
+        % [mask,pcorr] = limo_clustering(tvals.^2,pvals,tvals_H0.^2,pvals_H0,LIMO,2,0.05,0); % LIMO source code
+        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh); 
         nClust = length(unique(mask)) - 1; % number of significant clusters
         if nClust > 0
             fprintf('%g significant clusters (cluster-corrected).\n',nClust)

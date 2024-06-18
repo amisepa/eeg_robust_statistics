@@ -21,9 +21,6 @@ if isempty(mask)
     disp('Empty mask, computing one from corrected p-values.'); %return
     mask = pcorr < alpha;
 end
-if sum(mask,'all') == 0
-    warning('No significant differences');
-end
 
 if sum(mask,'all') > 0
 
@@ -198,6 +195,6 @@ if sum(mask,'all') > 0
     % set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
 
 else
-    disp('Nothing to plot (nothing is significant)')
+    disp('No significant differences, nothing to plot.')
 end
 

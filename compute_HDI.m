@@ -87,3 +87,24 @@ index    = I+r.*(J-1); % linear index
 HDI(1,:) = sorted_data(index);
 index    = I+r.*(J+upper_centile-1); % linear index
 HDI(2,:) = sorted_data(index);
+
+% Compute quantile interval following guidelines from Etz et al. (2024)
+% instead of HDIs. HDI can lead to different conclusions based on the 
+% parameterization of the model, whereas quantiles intervals are derived directly 
+% from the cumulative distribution function (from the sorted posterior bootstrap 
+% samples) and are based on probabilities rather than densities, ensuring 
+% coherence across different parameterizations.
+% REF:  Etz A, Chávez de la Peña AF, Baroja L, Medriano K, Vandekerckhove J. 
+%       The HDI + ROPE decision rule is logically incoherent but we can fix it. 
+%       Psychol Methods. 2024 May 23. doi: 10.1037/met0000660
+%       https://pubmed.ncbi.nlm.nih.gov/38780591/
+% HDI = zeros(2, size(Y, 1));
+% for i = 1:size(Y, 1)
+%     sampleVec = bb(i, :);
+%     alp = (1 - prob_cov) / 2;
+%     lim = quantile(sampleVec, [alp, 1 - alp]);
+%     HDI(:, i) = lim';
+% end
+
+
+

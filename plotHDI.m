@@ -27,16 +27,19 @@ if size(xAxis,2) < size(xAxis,1)
     xAxis = xAxis';
 end
 
+% default Bayesian weighting method for HDIs
+weigthting = 'bayesian';
+
 % Estimator 95% high-density intervals (HDI)
 fprintf('Computing estimator and high-density interval (HDI) for data 1... \n')
-[est1, HDI1] = compute_HDI(data1, method, 1-a,'bayesian');
+[est1, HDI1] = compute_HDI(data1, method, 1-a,weigthting);
 fprintf('Computing estimator and high-density interval (HDI) for data 2... \n')
-[est2, HDI2] = compute_HDI(data2, method, 1-a,'bayesian');
+[est2, HDI2] = compute_HDI(data2, method, 1-a,weigthting);
 
 % Difference
 fprintf('Computing estimator and high-density interval (HDI) for the difference... \n')
 if size(data1,2) == size(data2,2)    
-    [est3, HDI3] = compute_HDI(data1-data2,method,1-a,'bayesian');   
+    [est3, HDI3] = compute_HDI(data1-data2,method,1-a,weigthting);   
 else
     warning('The two datasets have a different number of participants/trials, using inpendent method')
     est3 = est1-est2;

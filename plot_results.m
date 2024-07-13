@@ -111,23 +111,27 @@ if sum(mask,'all') > 0
     if strcmpi(datatype,'time-frequency')
         ylabel('Frequency (Hz)','FontSize',12,'FontWeight','bold')
     else
-         % Add labels to plot
-        Ylabels = {chanlocs.labels};
+
+
+        % Edit area names when necessary
+        for i = 1:length(chanlocs)
+            % chanlocs(i).labels = char(join(split(chanlocs(i).labels,'_')));  to remove dashes in some atlas
+            chanlocs(i).labels = extractBefore(chanlocs(i).labels,' ');
+        end
+
+        % Add labels to plot
+        Yticks = {chanlocs.labels};
         % img_prop = get(gca);
         % newticks = round(linspace(1,length(Ylabels),length(img_prop.YTick)*2));
-        newticks = 1:2:length(Ylabels);
+        newticks = 1:2:length(Yticks);
         newticks = unique(newticks);
-        Ylabels  = Ylabels(newticks);
-        set(gca,'YTick',newticks,'YTickLabel', Ylabels,'FontWeight','normal');
+        Yticks  = Yticks(newticks);
+        set(gca,'YTick',newticks,'YTickLabel', Yticks,'FontWeight','normal');
 
-        % For scalp channels
-        ylabel('EEG channels','FontSize',12,'FontWeight','bold');
 
-        % For Brain areas
-        % for i = 1:length(chanlocs)
-        %     chanlocs(i).labels = char(join(split(chanlocs(i).labels,'_')));
-        % end
-        % ylabel('Brain areas','FontSize',13,'FontWeight','bold');
+        % Ylabel
+        % ylabel('EEG channels','FontSize',12,'FontWeight','bold');
+        ylabel('Brain areas','FontSize',12,'FontWeight','bold');
         
     end
 

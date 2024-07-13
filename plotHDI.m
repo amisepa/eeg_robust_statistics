@@ -27,19 +27,16 @@ if size(xAxis,2) < size(xAxis,1)
     xAxis = xAxis';
 end
 
-% default Bayesian weighting method for HDIs
-weigthting = 'bayesian';
-
 % Estimator 95% high-density intervals (HDI)
 fprintf('Computing estimator and high-density interval (HDI) for data 1... \n')
-[est1, HDI1] = compute_HDI(data1, method, 1-a,weigthting);
+[est1, HDI1] = compute_HDI(data1, method, 1-a);
 fprintf('Computing estimator and high-density interval (HDI) for data 2... \n')
-[est2, HDI2] = compute_HDI(data2, method, 1-a,weigthting);
+[est2, HDI2] = compute_HDI(data2, method, 1-a);
 
 % Difference
 fprintf('Computing estimator and high-density interval (HDI) for the difference... \n')
 if size(data1,2) == size(data2,2)    
-    [est3, HDI3] = compute_HDI(data1-data2,method,1-a,weigthting);   
+    [est3, HDI3] = compute_HDI(data1-data2,method,1-a);   
 else
     warning('The two datasets have a different number of participants/trials, using inpendent method')
     est3 = est1-est2;
@@ -55,9 +52,11 @@ color3 = [0.4660, 0.6740, 0.1880];      % green
 % color2 = cb(2,:);  % red
 % color3 = cb(4,:);  % green
 
+% figure('color','w'); 
+% subplot(2,1,1) 
+hold on
+
 % Data1 (mean + 95% HDI)
-figure('color','w'); 
-subplot(2,1,1); hold on
 p1 = plot(xAxis,est1,'LineWidth',2,'Color', color1);
 patch([xAxis fliplr(xAxis)], [HDI1(1,:) fliplr(HDI1(2,:))], ...
     color1,'FaceAlpha',.3,'EdgeColor',color1,'EdgeAlpha',0.9);
@@ -71,20 +70,19 @@ grid off; axis tight; hold on; box on
 ylabel('Potential (uV)')
 title(sprintf('%s + %g%% HDI',method,(1-a)*100)); 
 
-% Plot difference (mean + 95% HDI)
-subplot(2,1,2)
-plot(xAxis, est3,'LineWidth',2,'Color', color3);
-patch([xAxis fliplr(xAxis)], [HDI3(1,:) fliplr(HDI3(2,:))], ...
-    color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
-grid off; axis tight; box on
-ylabel('Difference (uV)')
+% % Plot difference (mean + 95% HDI)
+% subplot(2,1,2)
+% plot(xAxis, est3,'LineWidth',2,'Color', color3);
+% patch([xAxis fliplr(xAxis)], [HDI3(1,:) fliplr(HDI3(2,:))], ...
+%     color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
+% grid off; axis tight; box on
+% ylabel('Difference (uV)')
 
-
-% Add dash line to mark the null hypothesis
-hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
-ylabel('Difference','FontSize',11,'FontWeight','bold')
-xlabel("Time (ms)",'FontSize',11,'FontWeight','bold')
-% title(sprintf('Difference (%s + 95% HDI)',method)); 
+% % Add dash line to mark the null hypothesis
+% hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
+% ylabel('Difference','FontSize',11,'FontWeight','bold')
+% xlabel("Time (ms)",'FontSize',11,'FontWeight','bold')
+% % title(sprintf('Difference (%s + 95% HDI)',method)); 
 
 % Plot significance bar at the bottom
 % if isempty(h)

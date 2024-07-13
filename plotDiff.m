@@ -89,9 +89,9 @@ elseif strcmpi(method2,'CI')
 end
 
 
-figure; set(gcf,'Color','w');
-
-subplot(2,1,1); hold on;
+% figure; set(gcf,'Color','w');
+% subplot(2,1,1)
+hold on
 
 % Plot variable 1 (mean + CI)
 p1 = plot(xAxis,data1_mean,'LineWidth',2,'Color', color1);
@@ -109,25 +109,25 @@ grid off; axis tight; hold on; box on
 ylabel('Power (db)')
 title(sprintf('%s + 95%% %s',method1,method2)); 
 
-% Plot difference (mean + CI)
-subplot(2,1,2)
-plot(xAxis, data3_mean,'LineWidth',2,'Color', color3);
-patch([xAxis fliplr(xAxis)], [data3_CI(1,:) fliplr(data3_CI(2,:))], ...
-    color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
-grid off; axis tight; box on
-ylabel('Difference (uV)')
+% % Plot difference (mean + CI)
+% subplot(2,1,2)
+% plot(xAxis, data3_mean,'LineWidth',2,'Color', color3);
+% patch([xAxis fliplr(xAxis)], [data3_CI(1,:) fliplr(data3_CI(2,:))], ...
+%     color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
+% grid off; axis tight; box on
+% ylabel('Difference (uV)')
 
-% Add dash line to mark the null hypothesis
-hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
-ylabel('Difference','FontSize',11,'FontWeight','bold')
-xlabel("Frequency (Hz)",'FontSize',11,'FontWeight','bold')
+% % Add dash line to mark the null hypothesis
+% hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
+% ylabel('Difference','FontSize',11,'FontWeight','bold')
+% xlabel("Frequency (Hz)",'FontSize',11,'FontWeight','bold')
 
 % Plot significance bar at the bottom
 if sigBars
     plotSigBar(h, xAxis);
 end
 
-legend([p1, p2], {data1Name,data2Name}, 'Orientation','vertical','Location','SouthWest'); 
+legend([p1, p2], {data1Name,data2Name}, 'Orientation','vertical','Location','northeast'); 
 
 % grid on; 
 set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');

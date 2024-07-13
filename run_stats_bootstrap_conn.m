@@ -1,0 +1,240 @@
+%% Run t-tests comparing two EEG connectivity datasets (e.g., conditions or 
+% groups) on real data and H0 data (i.e., bootstrap).
+% 
+% INPUTS:
+%	data1 	- 4D data, computing bootstrap and stats from 3rd dimension (e.g., areas x areas x frequency x subjects)
+%	data1 	- 4D data, computing bootstrap and stats from 3rd dimension (e.g., areas x areas x frequency x subjects)
+%	nBoot 	- number of iterations for the bootstrap (default = 1000)
+% 	method 	- 'mean' to use paired t-test and 'trimmed mean' to use Yuen t-test default; 20% trim)
+%				Yuen t-test better accounts for outliers and non-normal distributions.
+%   dpt     - variables are dependent ('dpt', paired t-test) or not ('idpt', two-sample t-test)
+%
+% OUTPUTS
+% 	tvals 	    - t-values for real data
+% 	pvals 	    - p-values for real data
+%	tvals_H0    - t-values for H0 data
+%	pvals_H0    - p-values for H0 data
+%
+% EXAMPLE
+%   [tvals,pvals,tvals_H0,pvals_H0] = run_stats_bootstrap_conn(data1,data2,nBoot,method,dpt)
+% 
+% Cedric Cannard, July 2024
+
+function [tvals, pvals, tvals_H0, pvals_H0] = run_stats_bootstrap_conn(data1, data2, nBoot, method, dpt)
+
+% add path to subfunctions
+tmp = fileparts(which('run_stats_bootstrap_conn'));
+addpath(fullfile(tmp, 'functions'))
+
+% Check input parameters
+if nargin < 3 || isempty(nBoot)
+    nBoot = 1000; % Default number of bootstraps
+end
+if nargin < 4 || isempty(method)
+    method = 'trimmed mean'; % Default statistical method
+end
+if nargin < 5 || isempty(dpt)
+    error("Variables not defined. Please define if data are paired or not to select adequate statistical test.")
+end
+
+% Data sizes
+nAreas1 = size(data1, 1);  % number of areas (1st dimension)
+nAreas2 = size(data1, 2);  % number of areas (2nd dimension)
+nFreqs = size(data1, 3);   % number of frequencies (3rd dimension)
+nSub = size(data1, 4);     % number of trials (4th dimension)
+
+% Initialize matrices to hold t-statistics and p-values
+tvals = nan(nAreas1, nAreas2, nFreqs);
+pvals = nan(nAreas1, nAreas2, nFreqs);
+
+% Parpool with max number of workers
+addons = ver;
+if any(contains({addons.Name}, 'Parallel'))
+    ps = parallel.Settings;
+    ps.Pool.AutoCreate = true;
+    p = gcp('nocreate');
+    if isempty(p) % if not already on, launch it
+        c = parcluster; % cluster profile
+        N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
+        if ischar(N), N = str2double(N)-1; end
+        c.NumWorkers = N;  % update cluster profile to include all workers
+        c.parpool();
+    end
+end
+
+% Run stats on real data (all area pairs)
+disp('Performing statistics on observed data (all area pairs)...');
+progressbar('Running statistics on observed data')
+for iArea1 = 1:nAreas1
+    for iArea2 = 1:nAreas2
+        if iArea1 == iArea2
+            continue; % Skip diagonal elements
+        end
+        
+        % Extract the data for the current area pair across all frequencies
+        x1 = squeeze(data1(iArea1, iArea2, :, :));
+        x2 = squeeze(data2(iArea1, iArea2, :, :));
+
+        % Ensure the data is 3D for limo_yuend_ttest
+        if length(size(x1)) == 2
+            % one frequency bins
+            if size(data1,3)==1 
+                x1 = reshape(x1, [1, 1, size(x1, 1)]);
+                x2 = reshape(x2, [1, 1, size(x2, 1)]);
+            % multiple frequency bins
+            else 
+                x1 = reshape(x1, [1, size(x1, 1), size(x1, 2)]);
+                x2 = reshape(x2, [1, size(x2, 1), size(x2, 2)]);
+            end
+        end
+        
+        % Deal with missing values
+        nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
+        if any(nanSubj)
+            warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
+            x1(:,:,nanSubj) = [];
+            x2(:,:,nanSubj) = [];        
+        end
+        if isempty(x1) || isempty(x2)
+            warning('No data left for this area pair after removing NaNs');
+            continue;
+        end
+
+        if strcmpi(method, 'trimmed mean')
+            if strcmpi(dpt, 'dpt')
+                [tval, ~, ~, ~, pval, ~, ~] = limo_yuend_ttest(x1, x2, 20, 0.05);
+            elseif strcmpi(dpt, 'idpt')
+                [tval, ~, ~, ~, pval, ~, ~] = limo_yuen_ttest(x1, x2, 20, 0.05);
+            else
+                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+            end
+        elseif strcmpi(method, 'mean')
+            if strcmpi(dpt, 'dpt')
+                [~, ~, ~, ~, ~, tval, pval] = limo_ttest(1, x1, x2, .05);
+            elseif strcmpi(dpt, 'idpt')
+                [~, ~, ~, ~, ~, tval, pval] = limo_ttest(2, x1, x2, .05);
+            else
+                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+            end
+        else
+            error('The method input must be ''mean'' or ''trimmed mean'' ')
+        end
+
+        tvals(iArea1, iArea2, :) = tval;
+        pvals(iArea1, iArea2, :) = pval;
+    end
+    progressbar(iArea1/nAreas1)
+end
+clear tval; clear pval
+
+% Generate boot table (H0)
+b = 1;
+boot_index = zeros(nSub - sum(nanSubj), nBoot);
+disp('Generating bootstrap table (H0)...')
+while b ~= nBoot + 1
+    tmp = randi(nSub - sum(nanSubj), nSub - sum(nanSubj), 1);
+    if length(unique(tmp)) >= 4 % minimum number of subjects/trials
+        boot_index(:, b) = tmp;
+        b = b + 1;
+    else
+        error('Not enough subjects, minimum is 4 for degrees of freedom (i.e., n = 3)')
+    end
+end
+clear tmp
+for iArea1 = nAreas1:-1:1
+    for iArea2 = nAreas2:-1:1
+        boot_table{iArea1, iArea2} = boot_index;
+    end
+end
+
+% Center data to estimate H0
+disp("Centering data to estimate H0...")
+if strcmpi(method, 'trimmed mean')
+    trimmed_mean1 = limo_trimmed_mean(reshape(data1, nAreas1*nAreas2*nFreqs, nSub));
+    trimmed_mean2 = limo_trimmed_mean(reshape(data2, nAreas1*nAreas2*nFreqs, nSub));
+    data1_centered = data1 - reshape(trimmed_mean1, nAreas1, nAreas2, nFreqs, []);
+    data2_centered = data2 - reshape(trimmed_mean2, nAreas1, nAreas2, nFreqs, []);
+elseif strcmpi(method, 'mean')
+    mean1 = mean(data1, 4, 'omitnan');
+    mean2 = mean(data2, 4, 'omitnan');
+    data1_centered = data1 - repmat(mean1, [1, 1, 1, nSub]);
+    data2_centered = data2 - repmat(mean2, [1, 1, 1, nSub]);
+else
+    error('The method input must be ''mean'' or ''trimmed mean'' ')
+end
+
+
+% Estimate H0 for each area pair using t-tests on null data
+tvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
+pvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
+disp('Estimating H0 statistics on all area pairs...');
+progressbar('Estimating H0 on all area pairs')
+for iArea1 = 1:nAreas1
+    for iArea2 = 1:nAreas2
+
+        % Skip diagonal elements
+        if iArea1 == iArea2
+            continue; 
+        end
+
+        x1 = squeeze(data1_centered(iArea1, iArea2, :, :));
+        x2 = squeeze(data2_centered(iArea1, iArea2, :, :));
+
+        % Ensure the data is 3D for limo_yuend_ttest
+        if length(size(x1)) == 2
+            % one frequency bins
+            if size(data1,3)==1 
+                x1 = reshape(x1, [1, 1, size(x1, 1)]);
+                x2 = reshape(x2, [1, 1, size(x2, 1)]);
+            % multiple frequency bins
+            else 
+                x1 = reshape(x1, [1, size(x1, 1), size(x1, 2)]);
+                x2 = reshape(x2, [1, size(x2, 1), size(x2, 2)]);
+            end
+        end
+ 
+        % Deal with missing values
+        nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
+        if any(nanSubj)
+            warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
+            x1(:,:,nanSubj) = [];
+            x2(:,:,nanSubj) = [];        
+        end
+        if isempty(x1) || isempty(x2)
+            warning('No data left for this area pair after removing NaNs');
+            continue
+        end
+
+        parfor b = 1:nBoot
+            if strcmpi(method, 'trimmed mean')
+                if strcmpi(dpt, 'dpt')
+                    [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+                elseif strcmpi(dpt, 'idpt')
+                    [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+                else
+                    error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+                end
+            elseif strcmpi(method, 'mean')
+                if strcmpi(dpt, 'dpt')
+                    [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(1, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+                elseif strcmpi(dpt, 'idpt')
+                    [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(2, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+                else
+                    error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+                end
+            else
+                error("The method input must be 'mean' or 'trimmed mean'")
+            end
+        end
+
+        parfor b = 1:nBoot
+            tvals_H0(iArea1, iArea2, :, b) = tval{b};
+            pvals_H0(iArea1, iArea2, :, b) = pval{b};
+        end
+    end
+    progressbar(iArea1/nAreas1)
+end
+
+disp('Bootstrap statistics completed.');
+
+end

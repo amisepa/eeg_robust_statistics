@@ -47,20 +47,22 @@ nSub = size(data1, 4);     % number of trials (4th dimension)
 tvals = nan(nAreas1, nAreas2, nFreqs);
 pvals = nan(nAreas1, nAreas2, nFreqs);
 
-% Parpool with max number of workers
-addons = ver;
-if any(contains({addons.Name}, 'Parallel'))
-    ps = parallel.Settings;
-    ps.Pool.AutoCreate = true;
-    p = gcp('nocreate');
-    if isempty(p) % if not already on, launch it
-        c = parcluster; % cluster profile
-        N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
-        if ischar(N), N = str2double(N)-1; end
-        c.NumWorkers = N;  % update cluster profile to include all workers
-        c.parpool();
-    end
-end
+% % Parpool with max number of workers
+% addons = ver;
+% if any(contains({addons.Name}, 'Parallel'))
+%     ps = parallel.Settings;
+%     ps.Pool.AutoCreate = true;
+%     p = gcp('nocreate');
+%     % delete(gcp('nocreate')) % shut down opened parpool
+%     if isempty(p) % if not already on, launch it
+%         c = parcluster; % cluster profile
+%         N = feature('numcores');          % only physical cores
+%         % N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
+%         % if ischar(N), N = str2double(N)-1; end
+%         c.NumWorkers = N;  % update cluster profile to include all workers
+%         c.parpool();
+%     end
+% end
 
 % Run stats on real data (all area pairs)
 disp('Performing statistics on observed data (all area pairs)...');
@@ -147,13 +149,110 @@ for iArea1 = nAreas1:-1:1
     end
 end
 
+% % Center data to estimate H0
+% disp("Centering data to estimate H0...")
+% if strcmpi(method, 'trimmed mean')
+%     trimmed_mean1 = limo_trimmed_mean(reshape(data1, nAreas1*nAreas2*nFreqs, nSub));
+%     trimmed_mean2 = limo_trimmed_mean(reshape(data2, nAreas1*nAreas2*nFreqs, nSub));
+%     data1_centered = data1 - reshape(trimmed_mean1, nAreas1, nAreas2, nFreqs, []);
+%     data2_centered = data2 - reshape(trimmed_mean2, nAreas1, nAreas2, nFreqs, []);
+% elseif strcmpi(method, 'mean')
+%     mean1 = mean(data1, 4, 'omitnan');
+%     mean2 = mean(data2, 4, 'omitnan');
+%     data1_centered = data1 - repmat(mean1, [1, 1, 1, nSub]);
+%     data2_centered = data2 - repmat(mean2, [1, 1, 1, nSub]);
+% else
+%     error('The method input must be ''mean'' or ''trimmed mean'' ')
+% end
+
+% % Estimate H0 for each area pair using t-tests on null data
+% tvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
+% pvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
+% disp('Estimating H0 statistics on all area pairs...');
+% progressbar('Estimating H0 on all area pairs')
+% for iArea1 = 1:nAreas1
+%     for iArea2 = 1:nAreas2
+% 
+%         % Skip diagonal elements
+%         if iArea1 == iArea2
+%             continue; 
+%         end
+% 
+%         x1 = squeeze(data1_centered(iArea1, iArea2, :, :));
+%         x2 = squeeze(data2_centered(iArea1, iArea2, :, :));
+% 
+%         % Ensure the data is 3D for limo_yuend_ttest
+%         if length(size(x1)) == 2
+%             % one frequency bins
+%             if size(data1,3)==1 
+%                 x1 = reshape(x1, [1, 1, size(x1, 1)]);
+%                 x2 = reshape(x2, [1, 1, size(x2, 1)]);
+%             % multiple frequency bins
+%             else 
+%                 x1 = reshape(x1, [1, size(x1, 1), size(x1, 2)]);
+%                 x2 = reshape(x2, [1, size(x2, 1), size(x2, 2)]);
+%             end
+%         end
+% 
+%         % Deal with missing values
+%         nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
+%         if any(nanSubj)
+%             warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
+%             x1(:,:,nanSubj) = [];
+%             x2(:,:,nanSubj) = [];        
+%         end
+%         if isempty(x1) || isempty(x2)
+%             warning('No data left for this area pair after removing NaNs');
+%             continue
+%         end
+% 
+%         parfor b = 1:nBoot
+%             if strcmpi(method, 'trimmed mean')
+%                 if strcmpi(dpt, 'dpt')
+%                     [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+%                 elseif strcmpi(dpt, 'idpt')
+%                     [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+%                 else
+%                     error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+%                 end
+%             elseif strcmpi(method, 'mean')
+%                 if strcmpi(dpt, 'dpt')
+%                     [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(1, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+%                 elseif strcmpi(dpt, 'idpt')
+%                     [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(2, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+%                 else
+%                     error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+%                 end
+%             else
+%                 error("The method input must be 'mean' or 'trimmed mean'")
+%             end
+%         end
+% 
+%         parfor b = 1:nBoot
+%             tvals_H0(iArea1, iArea2, :, b) = tval{b};
+%             pvals_H0(iArea1, iArea2, :, b) = pval{b};
+%         end
+%     end
+%     progressbar(iArea1/nAreas1)
+% end
+
 % Center data to estimate H0
 disp("Centering data to estimate H0...")
 if strcmpi(method, 'trimmed mean')
-    trimmed_mean1 = limo_trimmed_mean(reshape(data1, nAreas1*nAreas2*nFreqs, nSub));
-    trimmed_mean2 = limo_trimmed_mean(reshape(data2, nAreas1*nAreas2*nFreqs, nSub));
-    data1_centered = data1 - reshape(trimmed_mean1, nAreas1, nAreas2, nFreqs, []);
-    data2_centered = data2 - reshape(trimmed_mean2, nAreas1, nAreas2, nFreqs, []);
+    % Reshape data to 2D for trimmed mean calculation
+    reshaped_data1 = reshape(data1, [], nSub);
+    reshaped_data2 = reshape(data2, [], nSub);
+    
+    % Compute trimmed mean for each row (each combination of area pair and frequency)
+    trimmed_mean1 = limo_trimmed_mean(reshaped_data1);
+    trimmed_mean2 = limo_trimmed_mean(reshaped_data2);
+    
+    % Reshape back to original dimensions
+    trimmed_mean1 = reshape(trimmed_mean1, [nAreas1, nAreas2, nFreqs]);
+    trimmed_mean2 = reshape(trimmed_mean2, [nAreas1, nAreas2, nFreqs]);
+    data1_centered = data1 - repmat(trimmed_mean1, [1, 1, 1, nSub]);
+    data2_centered = data2 - repmat(trimmed_mean2, [1, 1, 1, nSub]);
+    
 elseif strcmpi(method, 'mean')
     mean1 = mean(data1, 4, 'omitnan');
     mean2 = mean(data2, 4, 'omitnan');
@@ -169,72 +268,74 @@ tvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
 pvals_H0 = nan(nAreas1, nAreas2, nFreqs, nBoot);
 disp('Estimating H0 statistics on all area pairs...');
 progressbar('Estimating H0 on all area pairs')
-for iArea1 = 1:nAreas1
-    for iArea2 = 1:nAreas2
+for i = 1:(nAreas1 * nAreas2)
+    [iArea1, iArea2] = ind2sub([nAreas1, nAreas2], i);
 
-        % Skip diagonal elements
-        if iArea1 == iArea2
-            continue; 
-        end
+    if iArea1 == iArea2
+        continue; % Skip diagonal elements
+    end
 
-        x1 = squeeze(data1_centered(iArea1, iArea2, :, :));
-        x2 = squeeze(data2_centered(iArea1, iArea2, :, :));
+    x1 = squeeze(data1_centered(iArea1, iArea2, :, :));
+    x2 = squeeze(data2_centered(iArea1, iArea2, :, :));
 
-        % Ensure the data is 3D for limo_yuend_ttest
-        if length(size(x1)) == 2
-            % one frequency bins
-            if size(data1,3)==1 
-                x1 = reshape(x1, [1, 1, size(x1, 1)]);
-                x2 = reshape(x2, [1, 1, size(x2, 1)]);
-            % multiple frequency bins
-            else 
-                x1 = reshape(x1, [1, size(x1, 1), size(x1, 2)]);
-                x2 = reshape(x2, [1, size(x2, 1), size(x2, 2)]);
-            end
-        end
- 
-        % Deal with missing values
-        nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
-        if any(nanSubj)
-            warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
-            x1(:,:,nanSubj) = [];
-            x2(:,:,nanSubj) = [];        
-        end
-        if isempty(x1) || isempty(x2)
-            warning('No data left for this area pair after removing NaNs');
-            continue
-        end
-
-        parfor b = 1:nBoot
-            if strcmpi(method, 'trimmed mean')
-                if strcmpi(dpt, 'dpt')
-                    [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
-                elseif strcmpi(dpt, 'idpt')
-                    [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
-                else
-                    error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
-                end
-            elseif strcmpi(method, 'mean')
-                if strcmpi(dpt, 'dpt')
-                    [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(1, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
-                elseif strcmpi(dpt, 'idpt')
-                    [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(2, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
-                else
-                    error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
-                end
-            else
-                error("The method input must be 'mean' or 'trimmed mean'")
-            end
-        end
-
-        parfor b = 1:nBoot
-            tvals_H0(iArea1, iArea2, :, b) = tval{b};
-            pvals_H0(iArea1, iArea2, :, b) = pval{b};
+    % Ensure the data is 3D for limo_yuend_ttest
+    if length(size(x1)) == 2
+        % one frequency bins
+        if size(data1,3)==1 
+            x1 = reshape(x1, [1, 1, size(x1, 1)]);
+            x2 = reshape(x2, [1, 1, size(x2, 1)]);
+        % multiple frequency bins
+        else 
+            x1 = reshape(x1, [1, size(x1, 1), size(x1, 2)]);
+            x2 = reshape(x2, [1, size(x2, 1), size(x2, 2)]);
         end
     end
-    progressbar(iArea1/nAreas1)
+
+    % Deal with missing values
+    nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
+    if any(nanSubj)
+        warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
+        x1(:,:,nanSubj) = [];
+        x2(:,:,nanSubj) = [];        
+    end
+    if isempty(x1) || isempty(x2)
+        warning('No data left for this area pair after removing NaNs');
+        continue
+    end
+
+    tval = cell(1, nBoot);
+    pval = cell(1, nBoot);
+
+    parfor b = 1:nBoot
+        if strcmpi(method, 'trimmed mean')
+            if strcmpi(dpt, 'dpt')
+                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+            elseif strcmpi(dpt, 'idpt')
+                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest(x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 20, 0.05);
+            else
+                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+            end
+        elseif strcmpi(method, 'mean')
+            if strcmpi(dpt, 'dpt')
+                [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(1, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+            elseif strcmpi(dpt, 'idpt')
+                [~, ~, ~, ~, ~, tval{b}, pval{b}] = limo_ttest(2, x1(:, :, boot_table{iArea1, iArea2}(:, b)), x2(:, :, boot_table{iArea1, iArea2}(:, b)), 0.05);
+            else
+                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+            end
+        else
+            error("The method input must be 'mean' or 'trimmed mean'")
+        end
+    end
+
+    parfor b = 1:nBoot
+        tvals_H0(iArea1, iArea2, :, b) = tval{b};
+        pvals_H0(iArea1, iArea2, :, b) = pval{b};
+    end
 end
+progressbar(i/nAreas1)
+
 
 disp('Bootstrap statistics completed.');
 
-end
+% end

@@ -11,7 +11,7 @@ if size(C,1) ~= length(labels)
     error("Labels and correlation matrix must have the same number of variables: %g", size(C,1))
 end
 
-load('corr_cmap.mat');
+load('corr_cmap.mat')
 
 % format into a triangular matrix
 C = tril(C,-1);                 % zero upper triangle

@@ -87,10 +87,10 @@ for iChan = 1:nChan
 
     if strcmpi(method,'trimmed mean')
         if strcmpi(dpt, 'dpt')
-            [tval,~,~,~,pval,~,~] = limo_yuend_ttest(x1,x2,20,0.05);
+            [tval,~,~,~,pval,~,df] = limo_yuend_ttest(x1,x2,20,0.05);
 %             [tval,~,~,~,~,pval] = yuend(x1,x2,20,0.05);   % for 2D vecotrs
         elseif strcmpi(dpt, 'idpt')
-            [tval,~,~,~,pval,~,~] = limo_yuen_ttest(x1,x2,20,0.05);
+            [tval,~,~,~,pval,~,df] = limo_yuen_ttest(x1,x2,20,0.05);
 %             [tval,~,~,~,~,~,pval] = yuen(x1,x2,20,0.05);  % for 2D vectors
         else
             error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")

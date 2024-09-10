@@ -45,6 +45,8 @@ elseif strcmpi(method2,'CI')
     SE = std(data1,[],2,'omitnan') ./ sqrt(n)';  % standard error
     tscore = tinv([.025 .975],n-1);  % t-score
     data1_CI = data1_mean' + (-tscore.*SE)'; % 95% confidence interval
+else
+    error("Method 2 not recognized. Should be 'CI', 'SD', or 'SE'.")
 end
 
 % Variable 2
@@ -68,25 +70,25 @@ elseif strcmpi(method2,'CI')
     data2_CI = data2_mean' + (-tscore.*SE)'; % 95% confidence interval
 end
 
-% Difference
-if strcmpi(method1, 'mean')
-    data3_mean = mean(data1-data2,2,'omitnan');
-else
-    data3_mean = trimmean(data1-data2,20,2);
-end
-if strcmpi(method2,'SD')
-    SD = std(data1-data2,[],2,'omitnan');  % standard deviation
-    data3_CI(1,:) = data3_mean + SD;
-    data3_CI(2,:) = data3_mean - SD;
-elseif strcmpi(method2,'SE')
-    SE = std(data1-data2,[],2,'omitnan') ./ sqrt(n)';  % standard error
-    data3_CI(1,:) = data3_mean + SE;
-    data3_CI(2,:) = data3_mean - SE;
-elseif strcmpi(method2,'CI')
-    SE = std(data1-data2,[],2,'omitnan') ./ sqrt(n)';  % standard error
-    tscore = tinv([.025 .975],n-1);  % t-score
-    data3_CI = data3_mean' + (-tscore.*SE)'; % 95% confidence interval
-end
+% % Difference
+% if strcmpi(method1, 'mean')
+%     data3_mean = mean(data1-data2,2,'omitnan');
+% else
+%     data3_mean = trimmean(data1-data2,20,2);
+% end
+% if strcmpi(method2,'SD')
+%     SD = std(data1-data2,[],2,'omitnan');  % standard deviation
+%     data3_CI(1,:) = data3_mean + SD;
+%     data3_CI(2,:) = data3_mean - SD;
+% elseif strcmpi(method2,'SE')
+%     SE = std(data1-data2,[],2,'omitnan') ./ sqrt(n)';  % standard error
+%     data3_CI(1,:) = data3_mean + SE;
+%     data3_CI(2,:) = data3_mean - SE;
+% elseif strcmpi(method2,'CI')
+%     SE = std(data1-data2,[],2,'omitnan') ./ sqrt(n)';  % standard error
+%     tscore = tinv([.025 .975],n-1);  % t-score
+%     data3_CI = data3_mean' + (-tscore.*SE)'; % 95% confidence interval
+% end
 
 
 % figure; set(gcf,'Color','w');

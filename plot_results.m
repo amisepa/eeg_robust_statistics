@@ -112,7 +112,6 @@ if sum(mask,'all') > 0
         ylabel('Frequency (Hz)','FontSize',12,'FontWeight','bold')
     else
 
-
         % Edit area names when necessary
         for i = 1:length(chanlocs)
             % chanlocs(i).labels = char(join(split(chanlocs(i).labels,'_')));  to remove dashes in some atlas

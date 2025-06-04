@@ -26,6 +26,13 @@ if size(xAxis,2) < size(xAxis,1)
     xAxis = xAxis';
 end
 
+if exist('h', 'var') && ~isempty(h)
+    sigBars = true;
+else
+    sigBars = false;
+end
+
+
 % Estimator 95% high-density intervals (HDI)
 fprintf('Computing estimator and quantile intervals for data 1... \n')
 [est1, HDI1] = compute_HDI(data1, estimator, 1-a);
@@ -33,14 +40,14 @@ fprintf('Computing estimator and quantile intervals for data 2... \n')
 [est2, HDI2] = compute_HDI(data2, estimator, 1-a);
 
 % Difference
-% fprintf('Computing estimator and quantile intervals for the difference... \n')
-% if size(data1,2) == size(data2,2)
-%     [est3, HDI3] = compute_HDI(data1-data2,estimator,1-a);   
-% else
-%     warning('The two datasets have a different number of participants/trials, using inpendent estimator')
-%     est3 = est1-est2;
-%     HDI3 = HDI1-HDI2;
-% end
+fprintf('Computing estimator and quantile intervals for the difference... \n')
+if size(data1,2) == size(data2,2)
+    [est3, HDI3] = compute_HDI(data1-data2,estimator,1-a);   
+else
+    warning('The two datasets have a different number of participants/trials, using inpendent estimator')
+    est3 = est1-est2;
+    HDI3 = HDI1-HDI2;
+end
 
 % Colors
 color1 = [0, 0.4470, 0.7410];           % blue
@@ -51,8 +58,8 @@ color3 = [0.4660, 0.6740, 0.1880];      % green
 % color2 = cb(2,:);  % red
 % color3 = cb(4,:);  % green
 
-% figure('color','w'); 
-% subplot(2,1,1) 
+figure('color','w'); 
+subplot(2,1,1) 
 hold on
 
 % Data1 (mean + 95% HDI)
@@ -72,22 +79,22 @@ ylabel('Power (db)','fontsize',10,'fontweight','bold');
 %xlabel('Frequency (Hz)','fontsize',10,'fontweight','bold')
 title(sprintf('%s + %g%% quantile intervals',estimator,(1-a)*100)); 
 
-% % Plot difference (mean + 95% HDI)
-% subplot(2,1,2)
-% plot(xAxis, est3,'LineWidth',2,'Color', color3);
-% patch([xAxis fliplr(xAxis)], [HDI3(1,:) fliplr(HDI3(2,:))], ...
-%     color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
-% grid off; axis tight; box on
-% ylabel('Difference (uV)','fontsize',10,'fontweight','bold')
+% Plot difference (mean + 95% HDI)
+subplot(2,1,2)
+plot(xAxis, est3,'LineWidth',2,'Color', color3);
+patch([xAxis fliplr(xAxis)], [HDI3(1,:) fliplr(HDI3(2,:))], ...
+    color3,'FaceAlpha',.6,'EdgeColor',color3,'EdgeAlpha',0.9);
+grid off; axis tight; box on
+ylabel('Difference (uV)','fontsize',10,'fontweight','bold')
 
-% % Add dash line to mark the null hypothesis
-% hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
-% ylabel('Difference')
-% xlabel("Time (ms)",'fontsize',10,'fontweight','bold')
-% xlabel('Frequency (Hz)','fontsize',10,'fontweight','bold')
-% % title(sprintf('Difference (%s + 95% HDI)',estimator),'fontsize',11,'fontweight','bold'); 
+% Add dash line to mark the null hypothesis
+hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1) % thick dash line highlighting H0
+ylabel('Difference')
+xlabel("Time (ms)",'fontsize',10,'fontweight','bold')
+xlabel('Frequency (Hz)','fontsize',10,'fontweight','bold')
+% title(sprintf('Difference (%s + 95% HDI)',estimator),'fontsize',11,'fontweight','bold'); 
 
-% Plot significance bar at the bottom
+% % Plot significance bar at the bottom
 % if isempty(h)
 %     for i = 1:length(xAxis)
 %         if HDI3(1,i)<0 && HDI3(2,i)<0 || HDI3(1,i)>0 && HDI3(2,i)>0
@@ -97,7 +104,11 @@ title(sprintf('%s + %g%% quantile intervals',estimator,(1-a)*100));
 %         end
 %     end
 % end
-if ~isempty(h)
+% if ~isempty(h)
+%     plotSigBar(h, xAxis);
+% end
+% Plot significance bar at the bottom
+if sigBars
     plotSigBar(h, xAxis);
 end
 
@@ -105,4 +116,4 @@ end
 % legend([p1, p2], {data1Name,data2Name}, 'Location','SouthWest'); 
 legend([p1, p2], {data1Name,data2Name}); 
 
-% set(findall(gcf,'type','axes'),'fontSize',11,'fontweight','bold');
+set(findall(gcf,'type','axes'),'fontSize',10,'fontweight','bold');

@@ -34,6 +34,8 @@ if ~exist('alphav','var') || isempty(alphav)
     alphav = 5/100;
 end
 
+addpath 'C:\Users\CedricCannard\Documents\MATLAB\Robust-Correlations'
+
 % Generate the variance
 SIGMA = eye(p);
 if exist('D','var')
@@ -44,20 +46,20 @@ if exist('D','var')
     end
 end
 
-% Parpool parameters
-ps = parallel.Settings;
-ps.Pool.AutoCreate = true;
-tmp = gcp('nocreate');
-% delete(gcp('nocreate')) % shut down opened parpool
-if isempty(tmp) % if not already on, launch it
-    disp('Initiating parrallel computing (all cores and threads -1)...')
-    c = parcluster; % cluster profile
-    % N = feature('numcores');          % only physical cores
-    N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
-    if ischar(N), N = str2double(N); end
-    c.NumWorkers = N-2;  % update cluster profile to include all workers
-    c.parpool();
-end
+% % Parpool parameters
+% ps = parallel.Settings;
+% ps.Pool.AutoCreate = true;
+% tmp = gcp('nocreate');
+% % delete(gcp('nocreate')) % shut down opened parpool
+% if isempty(tmp) % if not already on, launch it
+%     disp('Initiating parrallel computing (all cores and threads -1)...')
+%     c = parcluster; % cluster profile
+%     % N = feature('numcores');          % only physical cores
+%     N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
+%     if ischar(N), N = str2double(N); end
+%     c.NumWorkers = N-2;  % update cluster profile to include all workers
+%     c.parpool();
+% end
 
 % Run the Monte Carlo simulation and keep smallest p -alues
 nboots = 1000;

@@ -47,43 +47,43 @@ nChan = size(data1,1);  % number of channels
 nTimes = size(data1,2); % number of time/frequency points
 nSub = size(data1,3);   % number of subjects
 
-% Parpool with max number of workers
-addons = ver;
-if any(contains({addons.Name}, 'Parallel'))
-    ps = parallel.Settings;
-    ps.Pool.AutoCreate = true;
-    p = gcp('nocreate');
-    % delete(gcp('nocreate')) % shut down opened parpool
-    if isempty(p) % if not already on, launch it
-        c = parcluster; % cluster profile
-        % N = feature('numcores');          % only physical cores
-        N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
-        if ischar(N), N = str2double(N)-1; end
-        c.NumWorkers = N;  % update cluster profile to include all workers
-        c.parpool();
-    end
-end
+% % Parpool with max number of workers
+% addons = ver;
+% if any(contains({addons.Name}, 'Parallel'))
+%     ps = parallel.Settings;
+%     ps.Pool.AutoCreate = true;
+%     p = gcp('nocreate');
+%     % delete(gcp('nocreate')) % shut down opened parpool
+%     if isempty(p) % if not already on, launch it
+%         c = parcluster; % cluster profile
+%         N = feature('numcores');          % only physical cores
+%         % N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
+%         if ischar(N), N = str2double(N)-1; end
+%         c.NumWorkers = N/2;  % update cluster profile to include all workers
+%         c.parpool();
+%     end
+% end
 
 % Run stats on real data (All electrodes)
 tvals = nan(size(data1,1),size(data1,2));
 pvals = nan(size(data1,1),size(data1,2));
 disp('Performing statistical test on observed data (all channels)...');
-progressbar('EEG channels')
-for iChan = 1:nChan
+% progressbar('EEG channels')
+parfor iChan = 1:nChan
 
     x1 = data1(iChan,:,:);
     x2 = data2(iChan,:,:);
 
-    nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
-    if any(nanSubj)
-        warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
-        x1(:,:,nanSubj) = [];
-        x2(:,:,nanSubj) = [];        
-    end
-    if isempty(x1) || isempty(x2)
-        warning('No data left for this area pair after removing NaNs');
-        continue
-    end
+    % nanSubj = isnan(squeeze(x1(:,:,1))) | squeeze(isnan(x2(:,:,1)))';
+    % if any(nanSubj)
+    %     warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
+    %     x1(:,:,nanSubj) = [];
+    %     x2(:,:,nanSubj) = [];        
+    % end
+    % if isempty(x1) || isempty(x2)
+    %     warning('No data left for this area pair after removing NaNs');
+    %     continue
+    % end
 
     if strcmpi(method,'trimmed mean')
         if strcmpi(dpt, 'dpt')
@@ -109,22 +109,23 @@ for iChan = 1:nChan
     tvals(iChan,:) = tval;
     pvals(iChan,:) = pval;
 
-    progressbar(iChan/nChan)
+    % progressbar(iChan/nChan)
 end
 clear tval; clear pval
 
+% minimum number of degrees of freedom
+if nSub-1 < 4   
+    error('Not enough subjects, minimum is 4 for degrees of freedom (i.e. n = 3)')
+end
+
 % Generate boot table (H0)
 b = 1;
-boot_index = zeros(nSub-sum(nanSubj),nBoot);
+boot_index = zeros(nSub,nBoot);
 disp('Generating boot table (H0)...')
 while b ~= nBoot + 1
-    tmp = randi(nSub-sum(nanSubj), nSub-sum(nanSubj), 1);
-    if length(unique(tmp)) >= 4   % minimum number of subjects/trials
+    tmp = randi(nSub, nSub, 1);
         boot_index(:,b) = tmp;
         b = b + 1;
-    else
-        error('Not enough subjects, minimum is 4 for degrees of freedom (i.e. n = 3)')
-    end
 end
 clear tmp
 for iChan = size(data1,1):-1:1
@@ -146,7 +147,7 @@ end
 tvals_H0 = nan(nChan, nTimes, nBoot);
 pvals_H0 = nan(nChan, nTimes, nBoot);
 disp('Running statistical tests on H0 data...');
-progressbar('Estimating H0 on all channels')
+% progressbar('Estimating H0 on all channels')
 for iChan = 1:nChan
     fprintf('Estimating H0 for channel %g/%g\n', iChan, nChan)
     % nanSubj = squeeze(isnan(data1_centered(iChan,1,:)));
@@ -192,7 +193,7 @@ for iChan = 1:nChan
         pvals_H0(iChan,:,b) = pval{b};
     end
 
-    progressbar(iChan/nChan)
+    % progressbar(iChan/nChan)
 
 end
 

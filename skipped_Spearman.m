@@ -104,19 +104,20 @@ nboot = 1000; % number of bootrsaps to compute
 
 % Create a table of resamples
 if nargout > 2
+    boostrap_sampling = zeros(n, nboot);
     boot_index = 1;
     while boot_index <= nboot
-        resample = randi(n,n,1);
-        if length(unique(resample)) > 3 % at least 3 different data points
-            boostrap_sampling(:,boot_index) = resample;
-            boot_index = boot_index +1;
-        else
-            error('At least 3 different data points are needed. this can happen when matrix is not transposed the right way (col x row)')
+        resample = randi(n, n, 1);
+        if length(unique(resample)) > 3
+            boostrap_sampling(:, boot_index) = resample;
+            boot_index = boot_index + 1;
         end
     end
-    lower_bound = round((alphav*nboot)/2);
+    lower_bound = round((alphav * nboot) / 2);
     upper_bound = nboot - lower_bound;
 end
+
+
 
 % Now for each pair to test, get the observed and boostrapped r and t
 % values, then derive the p value from the bootstrap (and hboot and CI if
@@ -246,8 +247,8 @@ if vis
     D = ceil(max([MM(:,4);MM2(:,4)]) + max([MM(:,4);MM2(:,4)])*0.01);
     axis([A boot C D]);
 
-    title(sprintf('Spearman rho = %g, p = %g, CI = [%g %g]', ...
-        round(rs,2), round(pval,3), round(CI(1),2),round(CI(2),2)),'Fontsize',12);  
+    title(sprintf('Spearman rho = %g, p = %.3f, CI = [%g %g]', ...
+        round(rs,2), pval, round(CI(1),2),round(CI(2),2)),'Fontsize',12);  
     xlabel('X','Fontsize',12); ylabel('Y','Fontsize',12);
     box on; set(gca,'Fontsize',12)
 

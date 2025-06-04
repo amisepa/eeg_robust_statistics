@@ -8,24 +8,24 @@ function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, m
 tmp = fileparts(which('compute_mcc'));
 addpath(fullfile(tmp,'functions/'))
 
-% Parpool with max number of workers if cluster or TFCE correction selected
-if mcctype>1
-    addons = ver;
-    if any(contains({addons.Name}, 'Parallel'))
-        ps = parallel.Settings;
-        ps.Pool.AutoCreate = true;
-        p = gcp('nocreate');
-        % delete(gcp('nocreate')) % shut down opened parpool
-        if isempty(p) % if not already on, launch it
-            c = parcluster; % cluster profile
-            % N = feature('numcores');          % only physical cores
-            N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
-            if ischar(N), N = str2double(N)-1; end
-            c.NumWorkers = N;  % update cluster profile to include all workers
-            c.parpool();
-        end
-    end
-end
+% % Parpool with max number of workers if cluster or TFCE correction selected
+% if mcctype>1
+%     addons = ver;
+%     if any(contains({addons.Name}, 'Parallel'))
+%         ps = parallel.Settings;
+%         ps.Pool.AutoCreate = true;
+%         p = gcp('nocreate');
+%         % delete(gcp('nocreate')) % shut down opened parpool
+%         if isempty(p) % if not already on, launch it
+%             c = parcluster; % cluster profile
+%             % N = feature('numcores');          % only physical cores
+%             N = getenv('NUMBER_OF_PROCESSORS'); % all processor (cores + threads)
+%             if ischar(N), N = str2double(N)-1; end
+%             c.NumWorkers = N;  % update cluster profile to include all workers
+%             c.parpool();
+%         end
+%     end
+% end
 
 mask = [];
 pcorr = [];
@@ -62,7 +62,7 @@ switch mcctype
         end
 
     case 1  % Max-correction
-        [mask, pcorr] = correct_max(abs(tvals),abs(tvals_H0),pthresh); % limo_max_correction(abs(M),abs(bootM),p)
+        [mask, pcorr] = correct_max(abs(tvals), abs(tvals_H0), pthresh); % limo_max_correction(abs(M),abs(bootM),p)
 
     case 2 % Cluster-correction
 

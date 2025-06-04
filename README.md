@@ -23,7 +23,7 @@ WLS options
 - Tukey's Biweight: Reduces the influence of outliers more aggressively by setting large residuals to zero weight.
 
 
-### Raw ERP (no GLM)
+### Grand average ERP using 20% trimmed across trials and subjects (no GLM)
 <img width="40%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected.png"> <img width="30%" src="https://github.com/amisepa/eeg_robust_statistics/blob/main/outputs/result_unpleasant-neutral_RAW_corrected_peak-channel.png">
 
 Cluster 1: 228 to 948 ms. Peak effect: channel P4 at 460 ms (t = 13.4) 
@@ -68,4 +68,5 @@ Cluster 2: 132 to 224 ms. Peak effect: channel O1 at 176 ms (t = 6)
 
 
 Cluster 1: 224 to 948 ms. Peak effect: channel P3 at 396 ms (t = 14) 
+
 Cluster 2: 152 to 212 ms. Peak effect: channel PO3 at 176 ms (t = 6) 

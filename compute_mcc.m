@@ -1,5 +1,29 @@
-%% Compute multiple comparison correction (Type 1 error or FWE).
+% Perform multiple comparisons correction on mass-univariate statistical test results.
 %
+% INPUTS:
+%   tvals         - Observed t-values [channels x time] or [space x time]
+%   pvals         - Observed uncorrected p-values (same size as tvals)
+%   tvals_H0      - Null distribution t-values from permutations (3D array)
+%   pvals_H0      - Null distribution p-values from permutations (3D array)
+%   mcctype       - Type of correction:
+%                     0 = no correction (uncorrected)
+%                     1 = max-t correction
+%                     2 = cluster-based correction
+%                     3 = TFCE (threshold-free cluster enhancement)
+%   pthresh       - Significance threshold (e.g., 0.05)
+%   neighbormatrix- Spatial adjacency matrix (for clustering and TFCE)
+%
+% OUTPUTS:
+%   mask          - Binary or labeled mask of significant effects after correction
+%   pcorr         - Corrected p-values
+%   nClust        - Number of significant clusters
+%
+% NOTES:
+%   - Cluster correction assumes neighborhood structure is defined in 'neighbormatrix'.
+%   - TFCE assumes 'limo_tfce' and related utilities are available.
+%
+% Cedric Cannard, Sep 2022
+
 % Cedric Cannard, Sep 2022
 
 function [mask, pcorr, nClust] = compute_mcc(tvals, pvals, tvals_H0, pvals_H0, mcctype, pthresh, neighbormatrix)
@@ -34,14 +58,14 @@ nChan = size(tvals,1);
 nTimes = size(tvals,2);
 
 % TFCE params
-if mcctype==3 
-    if ndims(tvals)==2 && nChan==1   
+if mcctype==3
+    if ndims(tvals)==2 && nChan==1
         warning("Data type detected: ERP/Power with one channel")
         ndim = 1;   % one channel
-    elseif ndims(tvals)==2 && nChan>1 || ndims(tvals)==3 && nChan==1 
+    elseif ndims(tvals)==2 && nChan>1 || ndims(tvals)==3 && nChan==1
         warning("Data type detected: ERP/Power with several channels or a single time-frequency map")
         ndim = 2;   % ERP/power with several channels or single time-freq map
-    elseif ndims(tvals)==3 && nChan>1 
+    elseif ndims(tvals)==3 && nChan>1
         warning("Data type detected: multi-channel ERSP")
         ndim = 3;   % ERSP
     end
@@ -76,22 +100,11 @@ switch mcctype
 
         % Get cluster mask and corrected p-values
         % [mask,pcorr] = limo_clustering(tvals.^2,pvals,tvals_H0.^2,pvals_H0,LIMO,2,0.05,0); % LIMO source code
-        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh); 
+        [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
         nClust = length(unique(mask)) - 1; % number of significant clusters
         if nClust > 0
             fprintf('%g significant clusters (cluster-corrected).\n',nClust)
         end
-
-        % % References
-        % disp(' ');
-        % disp('Refs for Clustering & Bootstrap:')
-        % disp('Maris & Oostenveld (2007), Nonparametric statistical testing of EEG- and MEG- data.')
-        % disp('Journal of Neuroscience Methods.')
-        % disp(' ');
-        % disp('Pernet, Latinus, Nichols, & Rousselet, (2015).')
-        % disp('Cluster-based computational methods for mass univariate analyses')
-        % disp('of event-related brain potentials/fields: A simulation study.')
-        % disp('Journal of Neuroscience methods.')
 
     case 3  % TFCE-correction
 
@@ -111,14 +124,4 @@ switch mcctype
         if nClust > 0
             fprintf('%g significant clusters (TFCE-corrected).\n',nClust)
         end
-
-        % % References
-        % disp(' ');
-        % disp('Ref for TFCE:')
-        % disp('Pernet, Latinus, Nichols, & Rousselet (2015).')
-        % disp('Cluster-based computational methods for mass univariate analyses')
-        % disp('of event-related brain potentials/fields: A simulation study.')
-        % disp('Journal of Neuroscience methods')
-        % disp(' ');
-
 end

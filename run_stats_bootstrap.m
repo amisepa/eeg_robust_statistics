@@ -70,7 +70,9 @@ pvals = nan(size(data1,1),size(data1,2));
 disp('Performing statistical test on observed data (all channels)...');
 % progressbar('EEG channels')
 parfor iChan = 1:nChan
-
+    tval = NaN;
+    pval = NaN;
+    
     x1 = data1(iChan,:,:);
     x2 = data2(iChan,:,:);
 
@@ -149,7 +151,7 @@ pvals_H0 = nan(nChan, nTimes, nBoot);
 disp('Running statistical tests on H0 data...');
 % progressbar('Estimating H0 on all channels')
 for iChan = 1:nChan
-    fprintf('Estimating H0 for channel %g/%g\n', iChan, nChan)
+    fprintf('Computing bootstraps statistics under H0 for channel %g/%g\n', iChan, nChan)
     % nanSubj = squeeze(isnan(data1_centered(iChan,1,:)));
     % x1 = data1_centered(iChan,:,~nanSubj);
     % nanSubj = squeeze(isnan(data2_centered(iChan,1,:)));

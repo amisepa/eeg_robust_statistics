@@ -15,6 +15,10 @@ end
 if nargin < 5 || isempty(dpt)
     error("Specify 'dpt' (paired) or 'idpt' (independent).")
 end
+if size(data1,3) == 1 && size(data1,2) > 1
+    warning('Time dimension missing or collapsed — check input shape')
+end
+
 if ndims(data1) == 2
     data1 = reshape(data1, 1, size(data1,1), size(data1,2));
     data2 = reshape(data2, 1, size(data2,1), size(data2,2));
@@ -33,6 +37,9 @@ parfor iChan = 1:nChan
         pval = NaN;  % to avoid parfor warnings
         x1 = squeeze(data1(iChan, t, :));
         x2 = squeeze(data2(iChan, t, :));
+        if isequal(x1, x2)
+            warning("channel %g, time %g: x1 and x2 are equal!", iChan, t)
+        end
         if strcmpi(method, 'trimmed mean')
             if strcmpi(dpt, 'dpt')
                 [tval, ~, ~, ~, pval] = yuend(x1, x2, 20, alpha);
@@ -41,7 +48,15 @@ parfor iChan = 1:nChan
             end
         elseif strcmpi(method, 'mean')
             if strcmpi(dpt, 'dpt')
-                [~, ~, ~, ~, ~, tval, pval] = limo_ttest(1, x1', x2', alpha);
+                try
+                    [~, ~, ~, ~, ~, tval, pval] = limo_ttest(1, x1', x2', alpha);
+
+                    % [~, ~, ~, ~, ~, tval, pval] = limo_ttest(1, x1, x2, alpha);
+                catch ME
+                    fprintf('Error at chan %d time %d: %s\n', iChan, t, ME.message)
+                    tval = NaN; pval = NaN;
+                end
+
             elseif strcmpi(dpt, 'idpt')
                 [~, ~, ~, ~, ~, tval, pval] = limo_ttest(2, x1', x2', alpha);
             end

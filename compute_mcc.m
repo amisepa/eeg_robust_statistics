@@ -49,22 +49,27 @@ addpath(fullfile(repo, 'functions'))
 
 switch mcctype
     case 0
+        % uncorrected
         pcorr = pvals;
         mask = pcorr <= pthresh;
 
     case 1
+        % max-likelihood percentile
         [mask, pcorr] = correct_max(abs(tvals), abs(tvals_H0), pthresh);
 
     case 2
+        % Spatiotemporl cluster-correction
         [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
 
     case 3
+        % Spatiotemporal TFCE corrected
         ndim = ndims(tvals);
-        nBoot = size(tvals_H0, 3);
+        nPerm = size(tvals_H0, 3);
         tfce_H0_score = nan(size(tvals_H0));
-        parfor b = 1:nBoot
+        disp("Computing threshold-free cluster enhancement (TFCE)...")
+        parfor b = 1:nPerm
             if mod(b, 50) == 0
-                fprintf(' Permutation %d/%d\n', b, nBoot);
+                fprintf(' Permutation %d/%d\n', b, nPerm);
             end
             tfce_H0_score(:,:,b) = limo_tfce(ndim, tvals_H0(:,:,b), neighbormatrix, 0);
         end

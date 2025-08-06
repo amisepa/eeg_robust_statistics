@@ -156,8 +156,9 @@ for iSub = 1:nSub
 end
 fprintf('Time to run GLM: %g min \n',round(toc(tstart)/60,1))
 
+
+
 % Save GLM outputs
-chanlocs = EEG.chanlocs;
 % save(fullfile(out_dir,sprintf('GLM_%s.mat', optimization)),'times','chanlocs','BETAS','F','R2','P')
 % save(fullfile(out_dir,'ERP_data.mat'),'times','chanlocs','PLEASANT','NEUTRAL','UNPLEASANT')
 

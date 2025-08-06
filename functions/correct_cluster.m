@@ -1,4 +1,18 @@
-%% Cluster-correction of mass-univariate EEG data
+%% correct_cluster
+% Applies multiple comparisons correction using cluster-based statistics (spatiotemporal or TFCE).
+%
+% Inputs:
+%   tvals        - Observed t-values [channels × freq × time]
+%   pvals        - Uncorrected p-values [channels × freq × time]
+%   tvals_H0     - Null t-values from permutation/bootstrap [channels × freq × time × boot]
+%   pvals_H0     - Null p-values from permutation/bootstrap [channels × freq × time × boot]
+%   neighbormatrix - Spatial adjacency matrix (channel × channel)
+%   mcctype      - Correction type: 2=spatiotemporal, 3=TFCE
+%   pthresh      - Cluster-forming threshold (e.g., 0.05)
+%
+% Outputs:
+%   mask         - Significant cluster mask (same size as tvals)
+%   pcorr        - Corrected p-value map
 % 
 % Cedric Cannard, Sep 2022
 
@@ -9,6 +23,11 @@ if size(tvals,1) == 1
 	warning("only one EEG channel detected. Switching to TFCE correction");
     mcctype = 3; % TFCE 
 end
+
+if ~isequal(size(tvals), size(pvals)) || ~isequal(size(tvals), size(tvals_H0(:,:,1)))
+    error('Mismatch in input dimensions for tvals, pvals, and H0 matrices.');
+end
+
 
 % nb of boostrap performed
 nboot = size(tvals_H0,3);      
@@ -160,9 +179,10 @@ if mcctype == 2 && size(tvals_H0,1) > 1
                 if p ==0
                     p = 1/nboot; % never 0
                 end
-                tmp = ones(size(mask));
-                tmp(L==CL_list(CL)) = p; % set p-values for many cells
-                pcorr = pcorr.*tmp;   % tmp is never at the same location so we can just add values
+                % tmp = ones(size(mask));
+                % tmp(L==CL_list(CL)) = p; % set p-values for many cells
+                % pcorr = pcorr.*tmp;   % tmp is never at the same location so we can just add values
+                pcorr(L == CL_list(CL)) = p;
             else
                 error('Cannot find the cluster mass for p-value? while found for the mask? something is seriously wrong')
             end

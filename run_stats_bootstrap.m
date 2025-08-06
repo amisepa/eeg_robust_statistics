@@ -146,57 +146,58 @@ else
 end
 
 % Estimate H0 for each channel using ttests on null data
+% Preallocate outputs
 tvals_H0 = nan(nChan, nTimes, nBoot);
 pvals_H0 = nan(nChan, nTimes, nBoot);
 disp('Running statistical tests on H0 data...');
-% progressbar('Estimating H0 on all channels')
-for iChan = 1:nChan
-    fprintf('Computing bootstraps statistics under H0 for channel %g/%g\n', iChan, nChan)
-    % nanSubj = squeeze(isnan(data1_centered(iChan,1,:)));
-    % x1 = data1_centered(iChan,:,~nanSubj);
-    % nanSubj = squeeze(isnan(data2_centered(iChan,1,:)));
-    % x2 = data2_centered(iChan,:,~nanSubj);
+parfor iChan = 1:nChan
+    fprintf('Computing bootstrap statistics under H0 for channel %g/%g\n', iChan, nChan)
 
+    % Extract data for this channel
     x1 = data1_centered(iChan,:,:);
     x2 = data2_centered(iChan,:,:);
 
+    % Remove NaN subjects from both
     nanSubj = squeeze(isnan(x1(:,1,:)) | isnan(x2(:,1,:)))';
     if any(nanSubj)
-        % warning('%g NaN subject(s) detected and removed from both variables!',sum(nanSubj))
         x1(:,:,nanSubj) = [];
-        x2(:,:,nanSubj) = [];        
+        x2(:,:,nanSubj) = [];
     end
 
-    parfor b = 1:nBoot
+    % Preallocate temporary arrays for this channel
+    tval_tmp = nan(nTimes, nBoot);
+    pval_tmp = nan(nTimes, nBoot);
+    for b = 1:nBoot
+        idx = boot_table{iChan}(:,b);
+
         if strcmpi(method,'trimmed Mean')
             if strcmpi(dpt, 'dpt')
-                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuend_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for depedent variables
+                [tval_b, ~, ~, ~, pval_b, ~, ~] = limo_yuend_ttest(x1(:,:,idx), x2(:,:,idx));
             elseif strcmpi(dpt, 'idpt')
-                [tval{b}, ~, ~, ~, pval{b}, ~, ~] = limo_yuen_ttest( x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)) ); % Yuen t-test for indepedent variables
+                [tval_b, ~, ~, ~, pval_b, ~, ~] = limo_yuen_ttest(x1(:,:,idx), x2(:,:,idx));
             else
-                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+                error("'dpt' input must be 'dpt' or 'idpt'")
             end
 
         elseif strcmpi(method,'mean')
             if strcmpi(dpt, 'dpt')
-			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(1,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for depedent variables
+                [~,~,~,~,~,tval_b,pval_b] = limo_ttest(1, x1(:,:,idx), x2(:,:,idx), 0.05);
             elseif strcmpi(dpt, 'idpt')
-			    [~,~,~,~,~,tval{b},pval{b}] = limo_ttest(2,x1(:,:,boot_table{iChan}(:,b)), x2(:,:,boot_table{iChan}(:,b)), 0.05); % paired t-test for independent variables
+                [~,~,~,~,~,tval_b,pval_b] = limo_ttest(2, x1(:,:,idx), x2(:,:,idx), 0.05);
             else
-                error("'dpt' input must be 'dpt' (paired data) or 'idpt' (unpaired data)")
+                error("'dpt' input must be 'dpt' or 'idpt'")
             end
         else
             error("The method input must be 'mean' or 'trimmed mean'")
         end
+
+        tval_tmp(:,b) = tval_b;
+        pval_tmp(:,b) = pval_b;
     end
 
-    parfor b = 1:nBoot
-        tvals_H0(iChan,:,b) = tval{b};
-        pvals_H0(iChan,:,b) = pval{b};
-    end
-
-    % progressbar(iChan/nChan)
-
+    % Store results for this channel
+    tvals_H0(iChan,:,:) = tval_tmp;
+    pvals_H0(iChan,:,:) = pval_tmp;
 end
 
 disp('Boostrap statistics completed.')

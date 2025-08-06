@@ -18,15 +18,15 @@ function plot_results(datatype, chan_type, xaxis, stats, mask, chanlocs, plot_ty
 %
 % Assumes a custom diverging colormap file named 'colormap_bwr.mat' is available
 
-if isempty(mask)
-    disp("Nothing significant, nothing to plot")
+if isempty(mask) || (iscell(mask) && ~any(cell2mat(mask), 'all')) || (~iscell(mask) && ~any(mask, 'all'))
+    disp("Nothing significant, nothing to plot.")
     return
 end
 
 load colormap_bwr.mat  % provides variable `dmap`
 dmap(1,:) = [0.9 0.9 0.9];  % gray for NaNs
 
-figure('Color','w');
+figure('Color','w','Name','Results from mass-univariate analysis','NumberTitle', 'Off');
 
 % Main statistical map plot
 if strcmpi(plot_type, 'all')
@@ -46,39 +46,58 @@ masked_stats(~global_mask) = NaN;
 % Main plot
 imagesc(xaxis, 1:size(stats,1), masked_stats);
 colormap(gca, dmap);
-c = colorbar; ylabel(c, 'T-values','FontWeight','bold','FontSize',11,'Rotation',-90)
+c = colorbar; 
+ylabel(c, 'T-values','FontWeight','bold','FontSize',14,'Rotation',-90)
 
-% Y-axis labels
+% Y-ticks
 if ~isempty(chanlocs)
     Yticks = {chanlocs.labels};
     skip = 2;
     set(gca, 'YTick', 1:skip:length(Yticks), ...
              'YTickLabel', Yticks(1:skip:end), ...
-             'FontWeight','normal');
-    % ylabel(strcmpi(chan_type,'scalp') * 'EEG channels' + ...
-    %        strcmpi(chan_type,'source') * 'Brain areas', ...
-    %        'FontSize',12,'FontWeight','bold');
-    if strcmpi(chan_type, 'scalp')
-        ylab = 'EEG channels';
-    elseif strcmpi(chan_type, 'source')
-        ylab = 'Brain areas';
-    else
-        ylab = 'Channels';
-    end
-    ylabel(ylab, 'FontSize', 12, 'FontWeight', 'bold');
-
+             'FontSize',10,'FontWeight','bold');
 end
 
-% X-axis label
+
+% x-ticks
+if ~isempty(xaxis)
+    skip = 4; % show every 4th label for clarity (adjust as needed)
+    xticks = xaxis(1:skip:end); % X values to place ticks at
+    set(gca, 'XTick', xticks, ...
+             'XTickLabel', arrayfun(@(x) sprintf('%g', x), xticks, 'UniformOutput', false), ...
+             'FontSize', 10, 'FontWeight', 'bold');
+end
+
+
+% x label
 if contains(datatype, 'time')
-    xlabel('Time (ms)', 'FontSize', 12, 'FontWeight', 'bold');
+    xlab = 'Time (ms)';
 elseif strcmpi(datatype, 'frequency')
-    xlabel('Frequency (Hz)', 'FontSize', 12, 'FontWeight', 'bold');
+    xlab = 'Frequency (Hz)';
 end
+xlabel(xlab, 'FontSize', 15, 'FontWeight', 'bold');
 
-title('Corrected Statistical Map', 'FontSize', 12, 'FontWeight', 'bold');
+
+% Y label
+if strcmpi(chan_type, 'scalp')
+    ylab = 'EEG channels';
+elseif strcmpi(chan_type, 'source')
+    ylab = 'Brain areas';
+else
+    ylab = 'Channels';
+end
+ylabel(ylab, 'FontSize', 15, 'FontWeight', 'bold');
+% hYLabel = ylabel(ylab);
+% set(hYLabel, 'FontSize', 20, 'FontWeight', 'bold', 'Interpreter', 'none');
+% drawnow
+
+% Title
+title('Corrected Statistical Map', 'FontSize', 20, 'FontWeight', 'bold');
+
+% color range/scale
 clim([-max(abs(stats(:))) max(abs(stats(:)))]);
-axis tight; box on; set(gca, 'LineWidth', 1);
+
+box on; set(gca, 'LineWidth', 1); % axis tight
 
 % Topoplot for each cluster
 if strcmpi(plot_type,'all')
@@ -121,7 +140,7 @@ if strcmpi(plot_type,'all')
         title(sprintf('Cluster %d (%.1f Hz)', iClust, peak_freq), ...
             'FontSize', 13, 'FontWeight', 'bold');
         cb = colorbar;
-        ylabel(cb, 'T-values', 'Rotation', 270, 'FontWeight', 'bold', 'FontSize', 11);
+        ylabel(cb, 'T-values', 'Rotation', 270, 'FontWeight', 'bold', 'FontSize', 15);
     end
 end
 
@@ -134,14 +153,12 @@ if strcmpi(plot_type, 'all') && ~isempty(clust_tbl)
     [~, freq_idx] = min(abs(xaxis - peak_freq));
     chan_idx = find(strcmpi({chanlocs.labels}, clust_tbl.Channel{strongest_idx}));
     plot(xaxis, stats(chan_idx, :), 'LineWidth', 2);
-    ylabel('T-values','FontSize',11,'FontWeight','bold');
-    xlabel('Frequency (Hz)','FontSize',11,'FontWeight','bold');
+    ylabel('T-values','FontSize',12,'FontWeight','bold');
+    xlabel('Frequency (Hz)','FontSize',12,'FontWeight','bold');
     title(sprintf('Course Plot: %s', clust_tbl.Channel{strongest_idx}), ...
-        'FontSize', 11, 'FontWeight', 'bold');
+        'FontSize', 15, 'FontWeight', 'bold');
     axis tight
 end
 
 % Final polish
-set(gcf, 'Name', 'Results from mass-univariate analysis', ...
-         'Color', 'w', 'NumberTitle', 'Off');
-set(findall(gcf, 'type', 'axes'), 'FontSize', 10, 'FontWeight', 'bold');
+% set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'normal');

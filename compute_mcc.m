@@ -62,8 +62,8 @@ switch mcctype
         [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
 
     case 3
-        % Spatiotemporal TFCE corrected
-        ndim = ndims(tvals);
+        % Spatiotemporal TFCE correction
+        ndim = ndims(tvals);  % 1 for one channel, 2 for ERP/PSD with several channels; 3 for time-frequency
         nPerm = size(tvals_H0, 3);
         tfce_H0_score = nan(size(tvals_H0));
         disp("Computing threshold-free cluster enhancement (TFCE)...")

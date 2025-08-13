@@ -22,9 +22,9 @@ else
     sigBars = false;
 end
 
-color1 = [0, 0.4470, 0.7410];
-color2 = [0.8500, 0.3250, 0.0980];
-color3 = [0.4660, 0.6740, 0.1880];      % green
+color1 = [0, 0.4470, 0.7410];       % blue
+color2 = [0.8500, 0.3250, 0.0980];  % red
+color3 = [0.4660, 0.6740, 0.1880];  % green
 
 % Variable 1
 n = size(data1,2);

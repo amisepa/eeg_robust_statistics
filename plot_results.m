@@ -26,7 +26,7 @@ end
 load colormap_bwr.mat  % provides variable `dmap`
 dmap(1,:) = [0.9 0.9 0.9];  % gray for NaNs
 
-figure('Color','w','Name','Results from mass-univariate analysis','NumberTitle', 'Off');
+figure('Color','w','Name','Results from mass-univariate analysis','NumberTitle', 'Off','Visible','off');
 
 % Main statistical map plot
 if strcmpi(plot_type, 'all')

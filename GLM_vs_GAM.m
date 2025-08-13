@@ -588,3 +588,5 @@ function Phi = ncs_basis(x, knots)
         Phi = [Phi dj]; %#ok<AGROW>
     end
 end
+
+

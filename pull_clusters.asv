@@ -1,4 +1,4 @@
-function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, datatype, grp, n, merge_thresh, sep_thresh, polarity_split, es_metric)
+function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, datatype, grp, n, merge_thresh, sep_thresh, polarity_split)
 % PULL_CLUSTERS Extract significant clusters after MCC. 
 % 
 %   Identifies labeled clusters from a binary significance mask, evaluates
@@ -21,8 +21,6 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %   merge_thresh     - Maximum gap (in xaxis units) for merging clusters
 %   sep_thresh       - Minimum bandwidth (in xaxis units) to keep a cluster
 %   polarity_split   - If true, makes polarity exclusive per x bin
-%   es_metric        - Effect size (ES) metric to compute: 'cohen-d' (default),
-%                       'hedge-g', 'eta2', 'r'
 %
 % OUTPUTS:
 %   mask             - Cell array of logical masks for each merged cluster
@@ -47,12 +45,6 @@ if ~exist('merge_thresh','var') || isempty(merge_thresh)
 end
 if ~exist('polarity_split','var') || isempty(polarity_split)
     polarity_split = false;
-end
-
-% ES metric to compute ('cohen-d', 'hedges-g', 'eta2', 'r')
-% Default ES metric if not provided
-if ~exist('es_metric','var') || isempty(es_metric)
-    es_metric = 'cohen-d';   % options: 'cohen-d','hedges-g','eta2','r'
 end
 
 % 3) Optional polarity exclusivity per x bin
@@ -267,11 +259,7 @@ else
 end
 
 % 9) Report and summarize
-if merge_thresh > 0
-    mode_str = 'Merged';
-else
-    mode_str = 'No merge';
-end
+mode_str = ternary(merge_thresh > 0, 'Merged', 'No merge');
 fprintf('\nCluster Summary (%s mode):\n', mode_str);
 
 ES = nan(1, numel(merged_mask_clusters));
@@ -282,7 +270,7 @@ for i = 1:numel(merged_mask_clusters)
     nElectrodes = sum(any(merged_mask_clusters{i}, 2));
     t           = merged_maxval(i);
 
-    [ES(i), ES_name(i)] = effect_size_from_t(t, grp, n, es_metric);
+    [ES(i), ES_name(i)] = effect_size_from_t(t, grp, n, ES_metric); % 'cohen-d', 'hedges-g', 'eta2', 'r'
 
     if strcmpi(datatype, 'frequency')
         fprintf('Cluster %d: %g to %g Hz (%g channels). Peak: %s at %g Hz (t = %.3f; %s = %.3f)\n', ...
@@ -302,7 +290,7 @@ clust_summary.Cluster       = (1:nMerged).';
 clust_summary.Start         = xaxis(merged_bounds(:,1)).';
 clust_summary.End           = xaxis(merged_bounds(:,2)).';
 clust_summary.Peak          = xaxis(merged_maxfreq).';
-clust_summary.Tvalue        = round(merged_maxval(:), 3);   % 3 decimals
+clust_summary.Tvalue        = round(merged_maxval(:), 3);   % t with 3 decimals
 clust_summary.ES            = round(ES(:), 3);
 clust_summary.ES_metric     = repmat(string(es_metric), nMerged, 1);
 clust_summary.Channel       = string({chanlocs(merged_maxchan).labels}).';
@@ -310,17 +298,13 @@ clust_summary.Polarity      = strings(nMerged,1);
 clust_summary.Polarity(merged_maxval > 0) = "Positive";
 clust_summary.Polarity(merged_maxval < 0) = "Negative";
 clust_summary.NumElectrodes = cellfun(@(m) sum(any(m, 2)), merged_mask_clusters).';
-
 clust_summary.Properties.VariableNames(2:4) = {'Start','End','Peak'};
 
-% Return final mask
+% return final mask unchanged
 mask = merged_mask_clusters;
 
 end
 
-
-
-%% Helper
 
 function [es, name] = effect_size_from_t(t, grp, n, metric)
 % metric: 'cohen-d' | 'hedges-g' | 'eta2' | 'r'
@@ -334,11 +318,16 @@ switch lower(grp)
         d  = t / sqrt(n1);                  % Cohen's dz
         J  = 1 - (3 / (4*df - 1));          % small-sample correction
         switch metric
-            case 'cohen-d', es = d;              name = "d";
-            case 'hedges-g', es = d * J;         name = "g";
-            case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
-            case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
-            otherwise, error('Unknown es_metric: %s', metric);
+            case 'cohen-d'
+                es = d;          name = "d";
+            case 'hedges-g'
+                es = d * J;      name = "g";
+            case 'eta2'
+                es = t^2 / (t^2 + df);  name = "eta2";
+            case 'r'
+                eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
+            otherwise
+                error('Unknown es_metric: %s', metric);
         end
 
     case 'idpt'  % independent/between
@@ -347,11 +336,16 @@ switch lower(grp)
         d  = t * sqrt(1/n1 + 1/n2);         % Cohen's d from t
         J  = 1 - (3 / (4*df - 1));
         switch metric
-            case 'cohen-d',  es = d;             name = "d";
-            case 'hedges-g', es = d * J;         name = "g";
-            case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
-            case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
-            otherwise, error('Unknown es_metric: %s', metric);
+            case 'cohen-d'
+                es = d;          name = "d";
+            case 'hedges-g'
+                es = d * J;      name = "g";
+            case 'eta2'
+                es = t^2 / (t^2 + df);  name = "eta2";
+            case 'r'
+                eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
+            otherwise
+                error('Unknown es_metric: %s', metric);
         end
 
     otherwise

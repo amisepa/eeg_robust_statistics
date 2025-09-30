@@ -1,133 +1,182 @@
 function [betas_obs, tvals, pvals, tvals_H0, pvals_H0] = run_stats_permutation_glm( ...
-    Y_all, X, phase_col, nSub, nPerm, varargin)
+    Y_all, X, condition_col, nSub, nPerm, varargin)
+% RUN_STATS_PERMUTATION_GLM
+% Y_all         [nChan x nFeat x nObs]
+% X             [nObs x nP] in canonical order:
+%               [1, condition, group, condition.*group, duration(optional)]
+% condition_col length nObs, 0/1, pattern [0;1] per subject
+% nSub          number of subjects
+% nPerm         number of permutations
+%
+% Name-value:
+%   'Group'       group_col vector (0 novice, 1 expert)
+%   'Subjects'    subj_idx vector length nObs (optional; inferred)
+%   'Duration'    duration_col vector length nObs (optional)
+%   'Progress'    true/false print progress (default true)
 
-% Parse optional inputs
+% --------------- options ---------------
 p = inputParser;
-addParameter(p, 'Duration', []);
 addParameter(p, 'Group', []);
+addParameter(p, 'Subjects', []);
+addParameter(p, 'Duration', []);
+addParameter(p, 'Progress', true);
 parse(p, varargin{:});
-duration_col = p.Results.Duration;
 group_col    = p.Results.Group;
+subj_idx     = p.Results.Subjects;
+duration_col = p.Results.Duration;
+show_prog    = p.Results.Progress;
 
-% Z-score continuous covariates for stability
-if ~isempty(duration_col)
-    duration_col = zscore(duration_col);
+% --------------- checks ---------------
+[nChan, nFreq, nObs] = size(Y_all);
+nP = size(X,2);
+
+if numel(condition_col) ~= nObs
+    error('condition_col must be length nObs');
 end
-if ~isempty(group_col) && ~islogical(group_col) && ~all(ismember(group_col,[0 1]))
-    group_col = zscore(group_col);
+condition_col = condition_col(:);
+
+% check canonical layout requirements
+if nP >= 3 && isempty(group_col)
+    error('X has a group column but Group was not provided');
+end
+if nP >= 5 && isempty(duration_col)
+    error('X has a duration column but Duration was not provided');
 end
 
-nChan = size(Y_all,1);
-nPredictors = size(X,2);
-nObs = size(Y_all,3);
+if ~isempty(group_col),    group_col    = group_col(:);    end
+if ~isempty(duration_col), duration_col = duration_col(:); end
 
-% Auto-detect trials per subject
-trials_per_sub = nObs / nSub;
-if mod(trials_per_sub,1) ~= 0
-    error('Number of observations is not evenly divisible by number of subjects');
+if isempty(subj_idx)
+    trials_per_sub = nObs / nSub;
+    if mod(trials_per_sub,1) ~= 0
+        error('Observations are not evenly divisible by nSub. Provide Subjects index.');
+    end
+    subj_idx = repelem((1:nSub)', trials_per_sub);
+else
+    if numel(subj_idx) ~= nObs
+        error('Subjects vector must be length nObs');
+    end
+    u = unique(subj_idx(:));
+    counts = arrayfun(@(s) sum(subj_idx==s), u);
+    if any(counts ~= counts(1))
+        error('Each subject must have the same number of observations for paired permutations');
+    end
+    trials_per_sub = counts(1);
+end
+if trials_per_sub < 2
+    error('Need at least 2 observations per subject for within-subject contrast');
+end
+if ~all(ismember([0 1], unique(condition_col)))
+    error('condition_col must contain both 0 and 1');
 end
 
-% Precompute for observed X
-XtX_inv = inv(X'*X);
+% --------------- observed fit ---------------
+if show_prog, fprintf('Running statistics on observed Betas...\n'); end
+betas_obs = nan(nChan, nFreq, nP);
+tvals     = nan(nChan, nFreq, nP);
+pvals     = nan(nChan, nFreq, nP);
 
-% ---------------------------
-% Observed GLM
-% ---------------------------
-fprintf('Running statistics on observed Betas...\n');
-betas_obs = nan(nChan, size(Y_all,2), nPredictors);
-tvals     = nan(nChan, size(Y_all,2), nPredictors);
-pvals     = nan(nChan, size(Y_all,2), nPredictors);
+XtX_inv = pinv(X' * X);
+rankX   = rank(X);
+dof_obs = max(nObs - rankX, 1);
 
 parfor iChan = 1:nChan
-    fprintf(' - channel %g/%g\n', iChan, nChan);
-
-    betas_ch = nan(size(Y_all,2), nPredictors);
-    tvals_ch = nan(size(Y_all,2), nPredictors);
-    pvals_ch = nan(size(Y_all,2), nPredictors);
-
-    for iFreq = 1:size(Y_all,2)
-        y = squeeze(Y_all(iChan,iFreq,:));
-        b = X \ y;  % OLS solution
-        betas_ch(iFreq,:) = b;
-
+    betas_ch = nan(nFreq, nP);
+    tvals_ch = nan(nFreq, nP);
+    pvals_ch = nan(nFreq, nP);
+    for iFreq = 1:nFreq
+        y = squeeze(Y_all(iChan, iFreq, :));
+        b = X \ y;
         resid = y - X*b;
-        dof = nObs - rank(X);
-        mse = sum(resid.^2) / dof;
-        se  = sqrt(diag(XtX_inv * mse));
-        tvals_ch(iFreq,:) = b ./ se;
-        pvals_ch(iFreq,:) = 2 * (1 - tcdf(abs(tvals_ch(iFreq,:)), dof));
-    end
 
+        mse = sum(resid.^2) / dof_obs;
+        se  = sqrt(diag(XtX_inv * mse));
+        se(se==0) = Inf;
+
+        t_here = (b ./ se);
+        p_here = 2 * (1 - tcdf(abs(t_here), dof_obs));
+
+        betas_ch(iFreq,:) = b.';
+        tvals_ch(iFreq,:) = t_here.';
+        pvals_ch(iFreq,:) = p_here.';
+    end
     betas_obs(iChan,:,:) = betas_ch;
     tvals(iChan,:,:)     = tvals_ch;
     pvals(iChan,:,:)     = pvals_ch;
 end
 
-% ---------------------------
-% Permutation GLM
-% ---------------------------
-fprintf('Running permutation statistics (H0)...\n');
-tvals_H0 = nan(nChan, size(Y_all,2), nPredictors, nPerm);
-pvals_H0 = nan(nChan, size(Y_all,2), nPredictors, nPerm);
+% --------------- permutations ---------------
+if show_prog, fprintf('Running permutation statistics (H0)...\n'); end
+tvals_H0 = nan(nChan, nFreq, nP, nPerm);
+pvals_H0 = nan(nChan, nFreq, nP, nPerm);
+
+% precompute subject row lists
+sub_rows = arrayfun(@(s) find(subj_idx==s), 1:nSub, 'uni', false);
 
 parfor iPerm = 1:nPerm
-    fprintf('   - permutation %g/%g\n', iPerm, nPerm);
-
-    % Permute within-subject phase labels
-    phase_perm = phase_col;
+    % swap condition within subject
+    cond_perm = condition_col;
     for s = 1:nSub
-        idx = ((s-1)*trials_per_sub + 1):(s*trials_per_sub);
-        phase_perm(idx) = phase_perm(idx(randperm(trials_per_sub)));
+        rows = sub_rows{s};
+        if rand > 0.5
+            cond_perm(rows) = cond_perm(rows(end:-1:1));
+        end
     end
 
-    % Build permuted X
-    X_perm = build_permuted_X_simple(phase_perm, duration_col, group_col);
-    XtX_inv_perm = inv(X_perm'*X_perm);
+    % rebuild X_perm deterministically in canonical order
+    X_perm = zeros(size(X));
+    X_perm(:,1) = 1;
+    if nP >= 2
+        X_perm(:,2) = cond_perm;
+    end
+    if nP >= 3
+        X_perm(:,3) = double(group_col);
+    end
+    if nP >= 4
+        X_perm(:,4) = double(cond_perm) .* double(group_col);
+    end
+    if nP >= 5
+        X_perm(:,5) = duration_col;
+    end
+    % if user added more columns beyond 5, copy them verbatim
+    if nP > 5
+        X_perm(:,6:end) = X(:,6:end);
+    end
 
-    tvals_perm_i = nan(nChan, size(Y_all,2), nPredictors);
-    pvals_perm_i = nan(nChan, size(Y_all,2), nPredictors);
+    XtX_inv_perm = pinv(X_perm' * X_perm);
+    dof_perm     = max(nObs - rank(X_perm), 1);
 
-    for iChan = 1:nChan
-        for iFreq = 1:size(Y_all,2)
-            y = squeeze(Y_all(iChan,iFreq,:));
+    tvals_perm_i = nan(nChan, nFreq, nP);
+    pvals_perm_i = nan(nChan, nFreq, nP);
+
+    for iChan2 = 1:nChan
+        for iFeat2 = 1:nFreq
+            y = squeeze(Y_all(iChan2, iFeat2, :));
             b = X_perm \ y;
             resid = y - X_perm*b;
-            dof = nObs - rank(X_perm);
-            mse = sum(resid.^2) / dof;
+
+            mse = sum(resid.^2) / dof_perm;
             se  = sqrt(diag(XtX_inv_perm * mse));
-            tvals_perm_i(iChan,iFreq,:) = b ./ se;
-            pvals_perm_i(iChan,iFreq,:) = 2 * (1 - tcdf(abs(tvals_perm_i(iChan,iFreq,:)), dof));
+            se(se==0) = Inf;
+
+            t_here = (b ./ se);
+            p_here = 2 * (1 - tcdf(abs(t_here), dof_perm));
+
+            tvals_perm_i(iChan2,iFeat2,:) = t_here;
+            pvals_perm_i(iChan2,iFeat2,:) = p_here;
         end
     end
 
     tvals_H0(:,:,:,iPerm) = tvals_perm_i;
     pvals_H0(:,:,:,iPerm) = pvals_perm_i;
+
+    if show_prog
+        step = max(1, floor(nPerm/20));
+        if mod(iPerm, step) == 0
+            fprintf('   - permutation %d/%d\n', iPerm, nPerm);
+        end
+    end
 end
 
-disp('Done with GLM permutation statistics.');
-end
-
-%% Subfunction: build permuted X
-function Xp = build_permuted_X_simple(phase_perm, duration_col, group_col)
-% Phase contrast coding
-recov_vs_ret = zeros(size(phase_perm));
-recov_vs_ret(phase_perm == 3) = 1;
-recov_vs_ret(phase_perm == 2) = -1;
-
-% Base predictors
-Xp = [ ...
-    ones(size(phase_perm)), ...
-    double(phase_perm == 2), ...
-    recov_vs_ret ...
-];
-
-% Optional covariates
-if ~isempty(duration_col)
-    Xp(:,end+1) = duration_col;
-end
-if ~isempty(group_col)
-    Xp(:,end+1) = group_col;
-    Xp(:,end+1) = group_col .* double(phase_perm == 2);
-    Xp(:,end+1) = group_col .* recov_vs_ret;
-end
+if show_prog, disp('Done with GLM permutation statistics.'); end
 end

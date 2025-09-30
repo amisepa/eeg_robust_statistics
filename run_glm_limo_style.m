@@ -29,7 +29,7 @@
 % 
 % Copyright (C) - Cedric Cannard, May 2024
 
-function [betas,rsquared,fstat,pvals,times] = run_glm(data,times,tlims,events,optimization,weight_method)
+function [betas,rsquared,fstat,pvals,times] = run_glm_limo_style(data,times,tlims,events,optimization,weight_method)
 
 if strcmp(optimization,'OLS') || strcmp(optimization,'IRLS')
     weight_method = [];

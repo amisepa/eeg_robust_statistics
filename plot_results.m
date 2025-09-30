@@ -20,12 +20,12 @@ else
 end
 masked_stats = stats; masked_stats(~global_mask) = NaN;
 
+figure('Color','w');
+
 % ---------------- MAIN PLOT ----------------
 if strcmpi(plot_type,'main') || strcmpi(plot_type,'all')
     if strcmpi(plot_type,'all')
         subplot(2,2,[1 3]); % big panel
-    else
-        figure('Color','w');
     end
     imagesc(xaxis, 1:size(stats,1), masked_stats);
     colormap(gca, dmap); c = colorbar;
@@ -49,8 +49,6 @@ end
 if strcmpi(plot_type,'topo') || strcmpi(plot_type,'all')
     if strcmpi(plot_type,'all')
         subplot(2,2,2);
-    else
-        figure('Color','w');
     end
     % Pick strongest cluster
     [~, idx] = max(abs(clust_tbl.Tvalue));
@@ -68,8 +66,6 @@ end
 if strcmpi(plot_type,'course') || strcmpi(plot_type,'all')
     if strcmpi(plot_type,'all')
         subplot(2,2,4);
-    else
-        figure('Color','w');
     end
     hold on
     [~, idx] = max(abs(clust_tbl.Tvalue));
@@ -79,6 +75,6 @@ if strcmpi(plot_type,'course') || strcmpi(plot_type,'all')
     plot(xaxis, stats(chan_idx,:), 'LineWidth',2);
     xlabel('X-axis'); ylabel('T-values')
     title(sprintf('Course Plot (%s)', clust_tbl.Channel{idx}))
-    grid on
+    box on
 end
 end

@@ -19,8 +19,11 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %   grp              - 'dpt' (within-group) or 'idpt' (between-group)
 %   n                - Cell array with subject counts: {n1} or {n1, n2}
 %   merge_thresh     - Maximum gap (in xaxis units) for merging clusters
+%                       (default = 0.5)
 %   sep_thresh       - Minimum bandwidth (in xaxis units) to keep a cluster
+%                       (default = 0.5)
 %   polarity_split   - If true, makes polarity exclusive per x bin
+%                       (default = true)
 %   es_metric        - Effect size (ES) metric to compute: 'cohen-d' (default),
 %                       'hedge-g', 'eta2', 'r'
 %
@@ -40,20 +43,27 @@ end
 
 % 2) Defaults for thresholds
 if ~exist('sep_thresh','var') || isempty(sep_thresh)
-    sep_thresh = 2;   % in xaxis units
+    sep_thresh = .5;   % in xaxis units
 end
 if ~exist('merge_thresh','var') || isempty(merge_thresh)
-    merge_thresh = 0; % in xaxis units
+    merge_thresh = .5; % in xaxis units
 end
 if ~exist('polarity_split','var') || isempty(polarity_split)
     polarity_split = false;
 end
 
 % ES metric to compute ('cohen-d', 'hedges-g', 'eta2', 'r')
-% Default ES metric if not provided
+% Default ES metric and options
 if ~exist('es_metric','var') || isempty(es_metric)
-    es_metric = 'cohen-d';   % options: 'cohen-d','hedges-g','eta2','r'
+    es_metric = 'cohen-d';   % 'cohen-d', 'hedges-g', 'eta2', 'r'
 end
+if ~exist('es_opts','var') || isempty(es_opts)
+    es_opts = struct();      % optional: es_opts.df, es_opts.welch, es_opts.s1, es_opts.s2
+end
+% es_opts.df     numeric, overrides df used for eta2 and r, and J in Hedges
+% es_opts.welch  true for Welch t in independent groups
+% es_opts.s1,s2  group SDs (only needed to convert Welch t to d/g)
+
 
 % 3) Optional polarity exclusivity per x bin
 %    Enforce that at each column only one polarity can contribute to clusters
@@ -267,53 +277,58 @@ else
 end
 
 % 9) Report and summarize
-if merge_thresh > 0
-    mode_str = 'Merged';
-else
-    mode_str = 'No merge';
-end
+if merge_thresh > 0, mode_str = 'Merged'; else, mode_str = 'No merge'; end
 fprintf('\nCluster Summary (%s mode):\n', mode_str);
 
-ES = nan(1, numel(merged_mask_clusters));
+ES_full = nan(1, numel(merged_mask_clusters));
 ES_name = strings(1, numel(merged_mask_clusters));
+df_used = nan(1, numel(merged_mask_clusters));
 
 for i = 1:numel(merged_mask_clusters)
     peak_val    = xaxis(merged_maxfreq(i));
     nElectrodes = sum(any(merged_mask_clusters{i}, 2));
     t           = merged_maxval(i);
 
-    [ES(i), ES_name(i)] = effect_size_from_t(t, grp, n, es_metric);
+    [ES_full(i), ES_name(i), df_used(i)] = effect_size_from_t(t, grp, n, es_metric, es_opts);
 
     if strcmpi(datatype, 'frequency')
         fprintf('Cluster %d: %g to %g Hz (%g channels). Peak: %s at %g Hz (t = %.3f; %s = %.3f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
-            nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES(i));
+            nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
     else
         fprintf('Cluster %d: %g to %g ms (%g channels). Peak: %s at %g ms (t = %.3f; %s = %.3f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
-            nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES(i));
+            nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
     end
 end
 
 % 10) Summary table
 nMerged = numel(merged_mask_clusters);
 clust_summary = table;
-clust_summary.Cluster       = (1:nMerged).';
-clust_summary.Start         = xaxis(merged_bounds(:,1)).';
-clust_summary.End           = xaxis(merged_bounds(:,2)).';
-clust_summary.Peak          = xaxis(merged_maxfreq).';
-clust_summary.Tvalue        = round(merged_maxval(:), 3);   % 3 decimals
-clust_summary.ES            = round(ES(:), 3);
-clust_summary.ES_metric     = repmat(string(es_metric), nMerged, 1);
-clust_summary.Channel       = string({chanlocs(merged_maxchan).labels}).';
-clust_summary.Polarity      = strings(nMerged,1);
+clust_summary.Cluster          = (1:nMerged).';
+clust_summary.Start            = xaxis(merged_bounds(:,1)).';
+clust_summary.End              = xaxis(merged_bounds(:,2)).';
+clust_summary.Peak             = xaxis(merged_maxfreq).';
+
+% store full precision and rounded t
+clust_summary.Tvalue_full      = merged_maxval(:);
+clust_summary.Tvalue           = round(merged_maxval(:), 3);
+
+% effect sizes
+clust_summary.ES_full          = ES_full(:);
+clust_summary.ES               = round(ES_full(:), 3);
+clust_summary.ES_metric        = repmat(string(es_metric), nMerged, 1);
+clust_summary.df_used          = df_used(:);
+
+clust_summary.Channel          = string({chanlocs(merged_maxchan).labels}).';
+clust_summary.Polarity         = strings(nMerged,1);
 clust_summary.Polarity(merged_maxval > 0) = "Positive";
 clust_summary.Polarity(merged_maxval < 0) = "Negative";
-clust_summary.NumElectrodes = cellfun(@(m) sum(any(m, 2)), merged_mask_clusters).';
+clust_summary.NumElectrodes    = cellfun(@(m) sum(any(m, 2)), merged_mask_clusters).';
 
 clust_summary.Properties.VariableNames(2:4) = {'Start','End','Peak'};
 
-% Return final mask
+% return final mask
 mask = merged_mask_clusters;
 
 end
@@ -322,39 +337,85 @@ end
 
 %% Helper
 
-function [es, name] = effect_size_from_t(t, grp, n, metric)
+function [es, name, df_out] = effect_size_from_t(t, grp, n, metric, es_opts)
 % metric: 'cohen-d' | 'hedges-g' | 'eta2' | 'r'
-if nargin < 4 || isempty(metric), metric = 'cohen-d'; end
+% When to use:
+%   'cohen-d'   use for paired dz or independent d under equal variances
+%   'hedges-g'  small-sample bias corrected d (paired or independent)
+%   'eta2'      variance-explained for a single t test
+%   'r'         correlation effect size for a single t test
+if nargin < 5 || isempty(es_opts), es_opts = struct(); end
+if ~isfield(es_opts,'df'), es_opts.df = []; end
+if ~isfield(es_opts,'welch'), es_opts.welch = false; end
+if ~isfield(es_opts,'s1'), es_opts.s1 = []; end
+if ~isfield(es_opts,'s2'), es_opts.s2 = []; end
 metric = lower(metric);
 
 switch lower(grp)
-    case 'dpt'   % paired/within
+    case 'dpt'   % paired
         n1 = n{1};
         df = n1 - 1;
-        d  = t / sqrt(n1);                  % Cohen's dz
-        J  = 1 - (3 / (4*df - 1));          % small-sample correction
+        if ~isempty(es_opts.df), df = es_opts.df; end
+        dz = t / sqrt(n1);               % Cohen dz from paired t
+        J  = 1 - (3 / (4*df - 1));       % bias correction
         switch metric
-            case 'cohen-d', es = d;              name = "d";
-            case 'hedges-g', es = d * J;         name = "g";
+            case 'cohen-d', es = dz;         name = "d";
+            case 'hedges-g', es = dz * J;    name = "g";
             case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
             case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
             otherwise, error('Unknown es_metric: %s', metric);
         end
+        df_out = df;
 
-    case 'idpt'  % independent/between
+    case 'idpt'  % independent
         n1 = n{1}; n2 = n{2};
-        df = n1 + n2 - 2;
-        d  = t * sqrt(1/n1 + 1/n2);         % Cohen's d from t
-        J  = 1 - (3 / (4*df - 1));
-        switch metric
-            case 'cohen-d',  es = d;             name = "d";
-            case 'hedges-g', es = d * J;         name = "g";
-            case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
-            case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
-            otherwise, error('Unknown es_metric: %s', metric);
+
+        if es_opts.welch
+            % Welch t path: need group SDs s1, s2 to back out the mean diff
+            assert(~isempty(es_opts.s1) && ~isempty(es_opts.s2), ...
+                'Welch conversion requires es_opts.s1 and es_opts.s2.');
+            s1 = es_opts.s1; s2 = es_opts.s2;
+            % Back out mean difference from t
+            mdiff = t * sqrt(s1^2/n1 + s2^2/n2);
+            % Pooled SD for standardizing d (Hedges suggested)
+            sp = sqrt(((n1-1)*s1^2 + (n2-1)*s2^2) / (n1 + n2 - 2));
+            d  = mdiff / sp;
+            % Welch df for eta2 and r (or override)
+            df_w = welch_df(s1, s2, n1, n2);
+            if ~isempty(es_opts.df), df_w = es_opts.df; end
+            J  = 1 - (3 / (4*df_w - 1));   % bias correction using Welch df
+            switch metric
+                case 'cohen-d', es = d;           name = "d";
+                case 'hedges-g', es = d * J;      name = "g";
+                case 'eta2',     es = t^2 / (t^2 + df_w); name = "eta2";
+                case 'r',        eta = t^2 / (t^2 + df_w); es = sign(t)*sqrt(eta); name = "r";
+                otherwise, error('Unknown es_metric: %s', metric);
+            end
+            df_out = df_w;
+
+        else
+            % Equal-variance pooled t
+            df = n1 + n2 - 2;
+            if ~isempty(es_opts.df), df = es_opts.df; end
+            d  = t * sqrt(1/n1 + 1/n2);   % Cohen d from pooled t
+            J  = 1 - (3 / (4*df - 1));
+            switch metric
+                case 'cohen-d', es = d;           name = "d";
+                case 'hedges-g', es = d * J;      name = "g";
+                case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
+                case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
+                otherwise, error('Unknown es_metric: %s', metric);
+            end
+            df_out = df;
         end
 
     otherwise
         error("grp must be 'dpt' or 'idpt'.")
 end
+end
+
+function dfw = welch_df(s1, s2, n1, n2)
+% Welch–Satterthwaite degrees of freedom
+v1 = s1^2 / n1; v2 = s2^2 / n2;
+dfw = (v1 + v2)^2 / ( (v1^2 / (n1 - 1)) + (v2^2 / (n2 - 1)) );
 end

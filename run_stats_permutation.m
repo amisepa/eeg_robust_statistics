@@ -1,21 +1,7 @@
 function [tvals, pvals, tvals_H0, pvals_H0] = run_stats_permutation(data1, data2, nPerm, method, dpt)
 % RUN_STATS_PERMUTATION
 % Pairwise permutation testing with synchronized permutations across channels.
-% Direction is always data1 minus data2.
-%
-% Syntax
-%   [tvals, pvals, tvals_H0, pvals_H0] = run_stats_permutation(data1, data2, nPerm, method, dpt)
-%
-% Description
-%   Computes observed pointwise test statistics and permutation null distributions
-%   for a pairwise comparison suitable for TFCE or t max familywise error control.
-%   For dependent data it uses subject wise swaps. For independent data it uses
-%   pooled label shuffles. At each permutation, the same randomization is applied
-%   to all channels which preserves dependence required by TFCE and t max.
-%
-% Direction
-%   All t values are for data1 minus data2.
-%   p values are two sided.
+% Direction is data1 minus data2. Robust to NaNs and zero variance.
 %
 % Inputs
 %   data1   [nChan x nTimes x nSub] for dpt, or [nChan x nTimes x n1] for idpt
@@ -25,41 +11,37 @@ function [tvals, pvals, tvals_H0, pvals_H0] = run_stats_permutation(data1, data2
 %   dpt     'dpt' for paired design or 'idpt' for independent groups
 %
 % Outputs
-%   tvals       [nChan x nTimes] observed test statistic for data1 minus data2
-%   pvals       [nChan x nTimes] observed pointwise two sided p value
-%   tvals_H0    [nChan x nTimes x nPerm] null test statistics
-%   pvals_H0    [nChan x nTimes x nPerm] null pointwise p values
-%
-% Examples
-%   % Paired within subject comparison
-%   [t,p,tH0,pH0] = run_stats_permutation(PSD_A, PSD_B, 2000, 'mean', 'dpt');
-%   % Independent groups
-%   [t,p,tH0,pH0] = run_stats_permutation(PSD_grp1, PSD_grp2, 5000, 'trimmed mean', 'idpt');
-%
-% Notes
-%   1) Synchronized permutations make TFCE and t max valid over the field.
-%   2) p values here are pointwise. Use your MCC routine for FWE control.
-%   3) No dependency on external yuend or limo_ttest. Everything is computed here.
-%
-% Author: Cedric Cannard
-% Version: 2025 10 05
+%   tvals       [nChan x nTimes]
+%   pvals       [nChan x nTimes]
+%   tvals_H0    [nChan x nTimes x nPerm]
+%   pvals_H0    [nChan x nTimes x nPerm]
 
 % Defaults
 if nargin < 3 || isempty(nPerm), nPerm = 1000; end
 if nargin < 4 || isempty(method), method = 'trimmed mean'; end
 if nargin < 5 || isempty(dpt), error("Specify 'dpt' or 'idpt'"); end
-trim = 0.20; % for trimmed mean
+trim = 0.20;
 
-% Accept 2D [nTimes x nSub] by promoting to [1 x nTimes x nSub]
-if ndims(data1) == 2
-    data1 = reshape(data1, 1, size(data1,1), size(data1,2));
-    data2 = reshape(data2, 1, size(data2,1), size(data2,2));
-end
-if size(data1,3) == 1 && size(data1,2) > 1
-    warning('Time dimension missing or collapsed, check input shape')
+% Validate dimensions and safely promote 2D to 3D
+if ndims(data1) == 2 && ndims(data2) == 2
+    % Interpret as [nChan x nSub]  ->  [nChan x 1 x nSub]
+    [nChan1, nSub1] = size(data1);
+    [nChan2, nSub2] = size(data2);
+    if nChan1 ~= nChan2
+        error('data1 and data2 must have the same number of channels.')
+    end
+    data1 = reshape(data1, nChan1, 1, nSub1);
+    data2 = reshape(data2, nChan2, 1, nSub2);
+elseif ndims(data1) == 3 && ndims(data2) == 3
+    % ok as is
+else
+    error('Inputs must be 2D [nChan x nSub] or 3D [nChan x nTimes x nSub].')
 end
 
-[nChan, nTimes, nSubOrN1] = size(data1);
+[nChan, nTimes, ~] = size(data1);
+if size(data2,1) ~= nChan || size(data2,2) ~= nTimes
+    error('data1 and data2 must match in [nChan x nTimes].')
+end
 
 tvals    = nan(nChan, nTimes);
 pvals    = nan(nChan, nTimes);
@@ -69,65 +51,50 @@ pvals_H0 = nan(nChan, nTimes, nPerm);
 % Sizes
 switch lower(dpt)
     case 'dpt'
-        nSub = nSubOrN1;
+        nSub = size(data1,3);
         if size(data2,3) ~= nSub
-            error('Paired input requires same number of subjects in data1 and data2.')
+            error('Paired case requires the same number of subjects in data1 and data2.')
         end
     case 'idpt'
-        n1 = nSubOrN1;
+        n1 = size(data1,3);
         n2 = size(data2,3);
     otherwise
         error("Unknown dependency type: use 'dpt' or 'idpt'")
 end
 
 % Observed stats
-disp('Computing observed test statistics...')
+[hObs, qObs] = make_parfor_waitbar(nChan, 'Observed stats');
 parfor iChan = 1:nChan
     for t = 1:nTimes
         x1 = squeeze(data1(iChan, t, :));
         x2 = squeeze(data2(iChan, t, :));
 
-        switch lower(method)
-            case 'mean'
-                if strcmpi(dpt, 'dpt')
-                    % paired mean, data1 minus data2
-                    d  = x1 - x2;
-                    n  = numel(d);
-                    md = mean(d);
-                    sd = std(d, 0);
-                    se = sd ./ sqrt(n);
-                    tv = md ./ se;
-                    df = n - 1;
-                    pv = 2 * (1 - tcdf(abs(tv), df));
-                else
-                    % independent mean, data1 minus data2
-                    nA = numel(x1); nB = numel(x2);
-                    mA = mean(x1);  mB = mean(x2);
-                    vA = var(x1, 0); vB = var(x2, 0);
-                    se = sqrt(vA./nA + vB./nB);
-                    tv = (mA - mB) ./ se;
-                    df = (vA./nA + vB./nB).^2 ./ ((vA.^2)./(nA^2*(nA-1)) + (vB.^2)./(nB^2*(nB-1)));
-                    pv = 2 * (1 - tcdf(abs(tv), df));
-                end
+        switch lower(dpt)
+            case 'dpt'
+                % remove subjects with NaN in either vector
+                keep = ~(isnan(x1) | isnan(x2));
+                x1c = x1(keep); x2c = x2(keep);
+            case 'idpt'
+                x1c = x1(~isnan(x1));
+                x2c = x2(~isnan(x2));
+        end
 
-            case 'trimmed mean'
-                if strcmpi(dpt, 'dpt')
-                    [tv, df, pv] = t_yuen_paired_d1minusd2(x1, x2, trim);
-                else
-                    [tv, df, pv] = t_yuen_independent_d1minusd2(x1, x2, trim);
-                end
-
-            otherwise
-                error("Unknown method: choose 'mean' or 'trimmed mean'")
+        if strcmpi(method,'mean')
+            [tv, pv] = t_mean_safe(x1c, x2c, dpt);
+        elseif strcmpi(method,'trimmed mean')
+            [tv, pv] = t_yuen_safe(x1c, x2c, dpt, trim);
+        else
+            error("Unknown method: choose 'mean' or 'trimmed mean'")
         end
 
         tvals(iChan, t) = tv;
         pvals(iChan, t) = pv;
     end
+    send(qObs, 1);                           % notify progress
 end
+close(hObs);
 
 % Synchronized permutations
-disp('Preparing synchronized permutations...')
 swap_mask = [];
 idx_perm  = [];
 if strcmpi(dpt, 'dpt')
@@ -141,7 +108,8 @@ else
 end
 
 % Null distribution
-disp('Running permutation test...')
+NpermTot = nChan * nPerm;                    % total iterations: channel × permutation
+[hPerm, qPerm] = make_parfor_waitbar(NpermTot, 'Permutation nulls');
 parfor iChan = 1:nChan
     A = data1(iChan,:,:);   % [1 x nTimes x n]
     B = data2(iChan,:,:);
@@ -151,7 +119,6 @@ parfor iChan = 1:nChan
 
     for perm = 1:nPerm
         if strcmpi(dpt, 'dpt')
-            % subject wise swaps
             permA = A; permB = B;
             sw = swap_mask(:,perm);
             if any(sw)
@@ -159,105 +126,154 @@ parfor iChan = 1:nChan
                 permB(:,:,sw) = A(:,:,sw);
             end
         else
-            % pooled label shuffle
             X = cat(3, A, B);
             idx = idx_perm(perm,:);
             permA = X(:,:,idx(1:n1_local));
             permB = X(:,:,idx(n1_local+1:n1_local+n2_local));
         end
 
-        if strcmpi(method, 'mean')
-            X1 = squeeze(permA(1,:,:))';  % [n x nTimes]
-            X2 = squeeze(permB(1,:,:))';
-            if strcmpi(dpt, 'dpt')
-                % paired, data1 minus data2
-                D  = X1 - X2;
-                n  = size(D,1);
-                md = mean(D,1);
-                sd = std(D,0,1);
-                se = sd ./ sqrt(n);
-                tv = md ./ se;
-                df = n - 1;
-                pv = 2 * (1 - tcdf(abs(tv), df));
-            else
-                % independent, data1 minus data2
-                nA = size(X1,1); nB = size(X2,1);
-                mA = mean(X1,1);  mB = mean(X2,1);
-                vA = var(X1,0,1); vB = var(X2,0,1);
-                se = sqrt(vA./nA + vB./nB);
-                tv = (mA - mB) ./ se;
-                df = (vA./nA + vB./nB).^2 ./ ((vA.^2)./(nA^2*(nA-1)) + (vB.^2)./(nB^2*(nB-1)));
-                pv = 2 * (1 - tcdf(abs(tv), df));
-            end
-            tvals_H0(iChan,:,perm) = tv;
-            pvals_H0(iChan,:,perm) = pv;
-
+        if strcmpi(method,'mean')
+            % vectorized across time with NaN handling
+            X1 = squeeze(permA(1,:,:));  % [n x nTimes] with possible NaN
+            X2 = squeeze(permB(1,:,:));
+            [tv, pv] = t_mean_matrix_safe(X1, X2, dpt);
         else
-            % Trimmed mean per time using data1 minus data2
-            ttmp = nan(1, nTimes);
-            ptmp = nan(1, nTimes);
+            % trimmed mean per time with NaN handling
+            tv = nan(1, nTimes);
+            pv = nan(1, nTimes);
             for t = 1:nTimes
                 xx1 = squeeze(permA(1,t,:));
                 xx2 = squeeze(permB(1,t,:));
-                if strcmpi(dpt, 'dpt')
-                    [tv, ~, pv] = t_yuen_paired_d1minusd2(xx1, xx2, trim);
+                if strcmpi(dpt,'dpt')
+                    keep = ~(isnan(xx1) | isnan(xx2));
+                    xx1c = xx1(keep); xx2c = xx2(keep);
                 else
-                    [tv, ~, pv] = t_yuen_independent_d1minusd2(xx1, xx2, trim);
+                    xx1c = xx1(~isnan(xx1));
+                    xx2c = xx2(~isnan(xx2));
                 end
-                ttmp(t) = tv; ptmp(t) = pv;
+                [tv(t), pv(t)] = t_yuen_safe(xx1c, xx2c, dpt, trim);
             end
-            tvals_H0(iChan,:,perm) = ttmp;
-            pvals_H0(iChan,:,perm) = ptmp;
         end
+
+        tvals_H0(iChan,:,perm) = tv;
+        pvals_H0(iChan,:,perm) = pv;
+
+        send(qPerm, 1);                      % notify progress
     end
 end
+close(hPerm);
 
-disp('Permutation statistics completed.')
 end
 
-% ===================== SUBFUNCTIONS =====================
+% ===================== helpers =====================
 
-function [tstat, df, p] = t_yuen_independent_d1minusd2(x, y, gamma)
-% Yuen two sample trimmed mean test for data1 minus data2
-x = x(:); y = y(:);
-[tmx, wvx, hx] = trim_winsor_stats(x, gamma);
-[tmy, wvy, hy] = trim_winsor_stats(y, gamma);
-
-vx  = (numel(x) * wvx) / (hx * (hx - 1));
-vy  = (numel(y) * wvy) / (hy * (hy - 1));
-se2 = vx + vy;
-
-tstat = (tmx - tmy) ./ sqrt(se2);
-df = (se2.^2) / ( (vx.^2)/(hx - 1) + (vy.^2)/(hy - 1) );
-p = 2 * (1 - tcdf(abs(tstat), df));
+function [tstat, p] = t_mean_safe(x1, x2, dpt)
+% Two sided t test, data1 minus data2, robust to NaN and zero variance
+eps_se = 1e-12;
+if strcmpi(dpt,'dpt')
+    n = numel(x1);
+    if n < 2
+        tstat = 0; p = 1; return
+    end
+    d  = x1 - x2;
+    md = mean(d,'omitnan');
+    sd = std(d,0,'omitnan');
+    se = sd ./ sqrt(n);
+    if ~isfinite(se) || se < eps_se
+        if abs(md) < eps_se, tstat = 0; p = 1;
+        else, tstat = sign(md)*Inf; p = 1/n; end
+        return
+    end
+    tstat = md ./ se;
+    df = max(n - 1, 1);
+    p = 2 * (1 - tcdf(abs(tstat), df));
+else
+    nA = numel(x1); nB = numel(x2);
+    if nA < 2 || nB < 2
+        tstat = 0; p = 1; return
+    end
+    mA = mean(x1,'omitnan');  mB = mean(x2,'omitnan');
+    vA = var(x1,0,'omitnan'); vB = var(x2,0,'omitnan');
+    se2 = vA./nA + vB./nB; se = sqrt(se2);
+    if ~isfinite(se) || se < eps_se
+        md = mA - mB;
+        if abs(md) < eps_se, tstat = 0; p = 1;
+        else, tstat = sign(md)*Inf; p = 1/(nA+nB); end
+        return
+    end
+    tstat = (mA - mB) ./ se;
+    % Welch Satterthwaite df, guard zeros
+    num = se2.^2;
+    den = (vA.^2)/(nA^2*(nA-1) + (nA==1)) + (vB.^2)/(nB^2*(nB-1) + (nB==1));
+    df = num./max(den, eps_se);
+    df = max(df, 1);
+    p = 2 * (1 - tcdf(abs(tstat), df));
+end
 end
 
-function [tstat, df, p] = t_yuen_paired_d1minusd2(x, y, gamma)
-% Paired Yuen test for data1 minus data2
-d = x(:) - y(:);
-[tm_d, wv_d, h_d] = trim_winsor_stats(d, gamma);
-se = sqrt( (numel(d) * wv_d) / (h_d * (h_d - 1)) );
-tstat = tm_d ./ se;
-df = h_d - 1;
-p = 2 * (1 - tcdf(abs(tstat), df));
+function [tvec, pvec] = t_mean_matrix_safe(X1, X2, dpt)
+% Columnwise t for matrices [n x nTimes], NaN safe, data1 minus data2
+nTimes = size(X1,2);
+tvec = nan(1,nTimes); pvec = nan(1,nTimes);
+for t = 1:nTimes
+    x1 = X1(:,t); x2 = X2(:,t);
+    [tvec(t), pvec(t)] = t_mean_safe(x1(~isnan(x1)), x2(~isnan(x2)), dpt);
+end
+end
+
+function [tstat, p] = t_yuen_safe(x1, x2, dpt, gamma)
+% Two sided Yuen test with safety for small N and NaNs, data1 minus data2
+eps_se = 1e-12;
+if strcmpi(dpt,'dpt')
+    d = x1 - x2;
+    [tm, wv, h] = trim_winsor_stats(d, gamma);
+    if h <= 1 || ~isfinite(wv)
+        tstat = 0; p = 1; return
+    end
+    se = sqrt( (numel(d) * wv) / (h * (h - 1)) );
+    if ~isfinite(se) || se < eps_se
+        if abs(tm) < eps_se, tstat = 0; p = 1; else, tstat = sign(tm)*Inf; p = 1/numel(d); end
+        return
+    end
+    tstat = tm ./ se;
+    df = max(h - 1, 1);
+    p = 2 * (1 - tcdf(abs(tstat), df));
+else
+    [tmx, wvx, hx] = trim_winsor_stats(x1, gamma);
+    [tmy, wvy, hy] = trim_winsor_stats(x2, gamma);
+    if hx <= 1 || hy <= 1 || ~isfinite(wvx) || ~isfinite(wvy)
+        tstat = 0; p = 1; return
+    end
+    vx  = (numel(x1) * wvx) / (hx * (hx - 1));
+    vy  = (numel(x2) * wvy) / (hy * (hy - 1));
+    se2 = vx + vy;
+    if ~isfinite(se2) || se2 < eps_se
+        md = tmx - tmy;
+        if abs(md) < eps_se, tstat = 0; p = 1; else, tstat = sign(md)*Inf; p = 1/(numel(x1)+numel(x2)); end
+        return
+    end
+    tstat = (tmx - tmy) ./ sqrt(se2);
+    df = (se2.^2) / ( (vx.^2)/(hx - 1) + (vy.^2)/(hy - 1) );
+    df = max(df, 1);
+    p = 2 * (1 - tcdf(abs(tstat), df));
+end
 end
 
 function [tm, wv, h] = trim_winsor_stats(v, gamma)
-% Returns trimmed mean tm, winsorized variance wv, and h = n - 2g
-v = sort(v(~isnan(v)));
+% Trim to central (1-2*gamma) and compute winsorized variance
+v = v(~isnan(v));
 n = numel(v);
-if n < 3
-    tm = mean(v); if isnan(tm), tm = 0; end
-    wv = var(v,0); if isnan(wv), wv = 0; end
-    h  = max(n - 2*floor(gamma*n), 1);
-    return
+if n == 0
+    tm = NaN; wv = NaN; h = 0; return
 end
+v = sort(v);
 g = floor(gamma * n);
 h = n - 2*g;
+if h <= 0
+    tm = mean(v); wv = var(v,0); h = 0; return
+end
 core = v(g+1:n-g);
 tm = mean(core);
-
-% Winsorize
 if g > 0
     w = v;
     w(1:g)     = v(g+1);
@@ -265,5 +281,22 @@ if g > 0
 else
     w = v;
 end
-wv = sum( (w - mean(w)).^2 ) / (n - 1);
+wv = sum( (w - mean(w)).^2 ) / max(n - 1, 1);
+if isnan(wv), wv = 0; end
+end
+
+% ===== put this helper as a SUBFUNCTION at the end of the file =====
+function [h, q] = make_parfor_waitbar(N, titleStr)
+% Waitbar that updates from parfor workers via a DataQueue
+h = waitbar(0, sprintf('%s 0%%', titleStr));
+q = parallel.pool.DataQueue;
+cnt = 0;  % lives on client
+afterEach(q, @update);
+    function update(~)
+        cnt = cnt + 1;
+        frac = min(cnt / N, 1);
+        if isvalid(h)
+            waitbar(frac, h, sprintf('%s %2.0f%%', titleStr, 100*frac));
+        end
+    end
 end

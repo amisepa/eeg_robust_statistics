@@ -44,6 +44,14 @@ tfce_H0_score = [];
 repo = fileparts(which("compute_mcc.m"));
 addpath(fullfile(repo, 'functions'))
 
+% % Accept 2D [nTimes x nSub] by promoting to [1 x nTimes x nSub]
+% if ndims(tvals) == 2
+%     tvals = reshape(tvals, 1, size(tvals,1), size(tvals,2));
+%     pvals = reshape(pvals, 1, size(pvals,1), size(pvals,2));
+%     tvals_H0 = reshape(tvals_H0, 1, size(tvals_H0,1), size(tvals_H0,2), size(tvals_H0,3));
+%     pvals_H0 = reshape(pvals_H0, 1, size(pvals_H0,1), size(pvals_H0,2), size(pvals_H0,3));
+% end
+
 % Get neighbors
 [~, neighbormatrix] = get_channelneighbors(chanlocs);
 

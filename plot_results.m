@@ -1,4 +1,4 @@
-function plot_results(datatype, chan_type, xaxis, stats, mask, chanlocs, plot_type, clust_tbl)
+function plot_results(data_type, chan_type, xaxis, stats, mask, chanlocs, plot_type, clust_tbl)
 % PLOT_RESULTS  Visualize significant EEG clusters
 %
 % plot_type: 'main', 'topo', 'course', or 'all'
@@ -9,7 +9,11 @@ if isempty(mask) || (iscell(mask) && ~any(cell2mat(mask), 'all')) || ...
     return
 end
 
-load colormap_bwr.mat; dmap(1,:) = [0.9 0.9 0.9];
+load colormap_bwr.mat; 
+% load cm17.mat
+% dmap = cm17a; 
+dmap(1,:) = [0.9 0.9 0.9]; % set NaNs to grey
+
 
 % Collapse mask if cell array
 global_mask = false(size(stats));
@@ -35,14 +39,18 @@ if strcmpi(plot_type,'main') || strcmpi(plot_type,'all')
     if ~isempty(chanlocs)
         set(gca,'YTick',1:2:numel(chanlocs), 'YTickLabel',{chanlocs(1:2:end).labels})
     end
-    if contains(datatype,'time')
+    if contains(data_type,'time')
         xlabel('Time (ms)')
-    elseif strcmpi(datatype,'frequency')
+    elseif strcmpi(data_type,'frequency')
         xlabel('Frequency (Hz)')
-    elseif strcmpi(datatype,'nonlinear')
-        xlabel('Scale')
+    elseif strcmpi(data_type,'nonlinear')
+        xlabel('Scale factor')
     end
-    ylabel('Channels')
+    if strcmpi(chan_type, 'scalp')
+        ylabel('Channels')
+    elseif strcmpi(chan_type, 'source')
+        ylabel("BRain Areas")
+    end
 end
 
 % ---------------- TOPO PLOT ----------------

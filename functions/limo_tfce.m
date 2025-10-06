@@ -1,29 +1,24 @@
-function [tfce_score,thresholded_maps] = limo_tfce_mod(varargin)
-
-% implementation of the Threshold-free cluster enhancement method
+function [tfce_score, thresholded_maps] = limo_tfce(varargin)
+% Threshold-free cluster enhancement (TFCE)
+% tfce = sum( extent(h)^E * h^H * dh )
+% 
 % developped for fMRI by Smith & Nichols, NeuroImage 44(2009), 83-98
 % tfce = sum(extent(h)^E*height^H*dh)
+% 
+% Inputs
+%   tfce_score = limo_tfce(type, data, channeighbstructmat)
+%   tfce_score = limo_tfce(type, data, channeighbstructmat, updatebar, E, H, dh)
 %
-% INPUT tfce_score = limo_tfce(type,data,channeighbstructmat)
-%       tfce_score = limo_tfce(type,data,channeighbstructmat,updatebar,E,H,dh)
+%   type: 1 = 1D, 2 = 2D, 3 = 3D. First dim must be channels when using a neighbor graph
+%   data: t/F map or stack under H0 in last dim (boot/permutation)
+%   channeighbstructmat: [] to use grid connectivity; otherwise neighbor graph
+%   updatebar: 0/1 lightweight console prints every ~5 percent
+%   E, H, dh: TFCE parameters (defaults E=0.5, H=2, dh=0.1)
 %
-%       type = 1 for 1D data (one channel ERP or Power),
-%              2 for 2D data (ERP, Power, or a single freq x time map),
-%              3 for 3D data (usually ERSP: channels x freq x time)
-%       The first dimension must contain channels
-%       Data can be either a map of t/F values or a set of t/F maps computed under H0 (in last dim)
-%       channeighbstructmat is the neighbourhood matrix for clustering 
-%          - if empty for type 2, switch to bwlabel = freq x time map.
-%          - the size of this matrix is n_channel x n_channel indicating which channels
-%            are neighbords (1) or not neighbors (0)
-%       updatebar is a flag (default = 1) to produce a waitbar
-%       E, H and dh are the parameters of the tfce algorithm defaults are 0.5, 2, 0.1
-%
-%
-% OUPUTS tfce_score is a map of scores (ie transformed t/F values)
-%        thresholded_maps returns every tfce maps before integration
-%                         i.e. maps for each dh value in sum(extent(h)^E*height^H*dh) 
-%
+% Outputs
+%   tfce_score: TFCE transformed map(s) same shape as input map(s) excluding the H0 dim
+%   thresholded_maps: per-height TFCE contributions (optional)
+% 
 % References
 %
 % Pernet, C., Latinus, M., Nichols, T.E., & Rousselet, G.A. (2015)
@@ -40,838 +35,290 @@ function [tfce_score,thresholded_maps] = limo_tfce_mod(varargin)
 % changed the integration from a loop to hist - thx to Bruno Giordano
 % ------------------------------
 %  Copyright (C) LIMO Team 2019
+% 
+% 2025 update: performance and robustness pass
 
-% precision max = 200; % define how many thresholds between min t/F map and
-% max t/F map --> needed as sometime under H0 some values can be
-% arbritrarily high due to low variance during resampling
-
-%% check input
-
+%% parse args
 if nargin < 3
-    error('not enough arguments')
+    error('limo_tfce: not enough arguments')
 elseif nargin == 3 || nargin == 4
-    if nargin == 3
-        updatebar = 1;
-    else
-        updatebar = varargin{4};
-    end
-    E = 0.5;
-    H = 2;
-    dh = 0.1;
+    if nargin == 3, updatebar = 1; else, updatebar = varargin{4}; end
+    E = 0.5; H = 2; dh = 0.1;
 elseif nargin == 7
-    updatebar = varargin{4};
-    E = varargin{5};
-    H = varargin{6};
-    dh = varargin{7};
-elseif nargin > 8
-    error('too many arguments')
+    updatebar = varargin{4}; E = varargin{5}; H = varargin{6}; dh = varargin{7};
+else
+    error('limo_tfce: wrong number of inputs')
 end
 
-type                = varargin{1};
-data                = varargin{2};
-channeighbstructmat = varargin{3};
-thresholded_maps    = [];
-clear varargin
+type  = varargin{1};
+data  = varargin{2};
+G     = varargin{3};           % neighbor graph or []
 
-%% start tcfe
+thresholded_maps = [];
 
+% sanitize neighbor graph once
+if ~isempty(G)
+    G = logical(G);
+    G = G | G.';
+    nd = size(G,1);
+    G(1:nd+1:end) = false;
+end
+
+% use like-typed outputs
+outClass = class(data);
+
+%% dispatch by dimensionality and presence of H0 stack
 switch type
-    
-    % ---------------------------------------------------------------------
-    case{1}  % 1D data -- needs to be checked a
-        % ---------------------------------------------------------------------
-        
-        if isvector(data)
-            [~,x]=size(data);
-            subtype = 1;
+case 1
+    % data: [T] or [T x B]
+    sz = size(data);
+    if numel(sz) == 2 && sz(2) > 1
+        subtype = 2;  % H0 stack
+        T = sz(1); B = sz(2);
+    else
+        subtype = 1;  % single map
+        T = numel(data); B = 1;
+    end
+
+    if subtype == 1
+        tfce_score = tfce_one_map_1d(reshape(data, [T 1]), G, E, H, dh, updatebar);
+    else
+        tfce_score = zeros(T, B, outClass);
+        if updatebar, fprintf('TFCE 1D %d maps: ', B); end
+        for b = 1:B
+            tfce_score(:,b) = tfce_one_map_1d(data(:,b), G, E, H, dh, 0);
+            if updatebar && mod(b, max(1, floor(B/20))) == 0, fprintf('.'); end
+        end
+        if updatebar, fprintf(' %d/%d\n', B, B); end
+    end
+
+case 2
+    % data: [X Y] or [X Y B]
+    [X, Y, B] = size(data);
+    if B == 1
+        tfce_score = tfce_one_map_nd(data, G, E, H, dh, updatebar, 2);
+    else
+        tfce_score = zeros(X, Y, B, outClass);
+        if updatebar, fprintf('TFCE 2D %d maps: ', B); end
+        for b = 1:B
+            tfce_score(:,:,b) = tfce_one_map_nd(data(:,:,b), G, E, H, dh, 0, 2);
+            if updatebar && mod(b, max(1, floor(B/20))) == 0, fprintf('.'); end
+        end
+        if updatebar, fprintf(' %d/%d\n', B, B); end
+    end
+
+case 3
+    % data: [X Y Z] or [X Y Z B]
+    sz = size(data);
+    if numel(sz) == 3
+        tfce_score = tfce_one_map_nd(data, G, E, H, dh, updatebar, 3);
+    else
+        [X, Y, Z, B] = size(data);
+        tfce_score = zeros(X, Y, Z, B, outClass);
+        if updatebar, fprintf('TFCE 3D %d maps: ', B); end
+        for b = 1:B
+            tfce_score(:,:,:,b) = tfce_one_map_nd(data(:,:,:,b), G, E, H, dh, 0, 3);
+            if updatebar && mod(b, max(1, floor(B/20))) == 0, fprintf('.'); end
+        end
+        if updatebar, fprintf(' %d/%d\n', B, B); end
+    end
+
+otherwise
+    error('limo_tfce: unsupported type %d', type)
+end
+
+% thresholded_maps remains unset for speed; can be added back if needed
+
+end
+
+
+% ======================== helpers ========================
+
+function tfce = tfce_one_map_1d(map, G, E, H, dh, updatebar)
+map = double(map);
+pos = max(map, 0);
+neg = max(-map, 0);
+if ~any(pos(:)) && ~any(neg(:)), tfce = zeros(size(map)); return, end
+
+hpos = build_heights_one_sided(max(pos(:)), dh, 200);
+hneg = build_heights_one_sided(max(neg(:)), dh, 200);
+
+tfce_pos = tfce_accumulate_1d(pos, G, hpos, E, H, updatebar);
+tfce_neg = tfce_accumulate_1d(neg, G, hneg, E, H, updatebar);
+tfce = cast(tfce_pos + tfce_neg, 'like', map);
+end
+
+function tfce = tfce_one_map_nd(map, G, E, H, dh, updatebar, nd)
+map = double(map);
+pos = max(map, 0);
+neg = max(-map, 0);
+if ~any(pos(:)) && ~any(neg(:)), tfce = zeros(size(map)); return, end
+
+hpos = build_heights_one_sided(max(pos(:)), dh, 200);
+hneg = build_heights_one_sided(max(neg(:)), dh, 200);
+
+tfce_pos = tfce_accumulate_nd(pos, G, hpos, E, H, updatebar, nd);
+tfce_neg = tfce_accumulate_nd(neg, G, hneg, E, H, updatebar, nd);
+tfce = cast(tfce_pos + tfce_neg, 'like', map);
+end
+
+function hvec = build_heights_one_sided(maxv, dh, cap)
+% Heights start at 0 and go up to the positive maximum ONLY
+if ~(isfinite(maxv) && maxv > 0), hvec = 0; return, end
+if maxv > 1
+    precision = min(cap, max(2, round(maxv / dh)));
+else
+    precision = min(cap, max(2, round(1 / dh)));  % finer grid for small ranges
+end
+hvec = linspace(0, maxv, precision);
+end
+
+
+function tfce = tfce_accumulate_1d(map, G, hvec, E, H, updatebar)
+T = size(map,1);
+tfce = zeros(T,1);
+if all(map(:) == 0), return, end
+
+print_every = max(1, floor(numel(hvec)/20));
+for i = 1:numel(hvec)
+    h = hvec(i);
+    bw = map > h;                           % logical [T x 1]
+    if isempty(G)
+        % connectivity along the vector
+        CC = bwconncomp(bw, 2);
+        ext = zeros(T,1);
+        for k = 1:CC.NumObjects
+            idx = CC.PixelIdxList{k};
+            ext(idx) = numel(idx);
+        end
+    else
+        % neighbor graph in channels space; here T must match size(G,1)
+        if size(G,1) ~= T
+            error('limo_tfce: neighbor graph size does not match 1D length')
+        end
+        % build components via graph traversal
+        ext = components_from_graph(bw, G);
+    end
+    tfce = tfce + (ext.^E) * (h^H) * step_size(hvec, i);
+    if updatebar && mod(i, print_every) == 0
+        fprintf('.');
+    end
+end
+if updatebar, fprintf(' %d/%d\n', numel(hvec), numel(hvec)); end
+end
+
+function tfce = tfce_accumulate_nd(map, G, hvec, E, H, updatebar, nd)
+sz = size(map);
+tfce = zeros(sz);
+
+if all(map(:) == 0), return, end
+
+% pick grid connectivity when no graph
+if isempty(G)
+    if nd == 2
+        conn = 4;
+    else
+        conn = 6;
+    end
+end
+
+print_every = max(1, floor(numel(hvec)/20));
+for i = 1:numel(hvec)
+    h = hvec(i);
+    bw = map > h;
+
+    if isempty(G)
+        CC = bwconncomp(bw, conn);
+        ext = zeros(sz);
+        for k = 1:CC.NumObjects
+            idx = CC.PixelIdxList{k};
+            ext(idx) = numel(idx);
+        end
+    else
+        % When a channel neighbor graph is provided, we cluster across channels
+        % at each time or time x freq slice. This assumes dim 1 = channels.
+        if nd == 2
+            % bw: [chan x time]
+            [nChan, nTime] = size(bw);
+            if size(G,1) ~= nChan
+                error('limo_tfce: neighbor graph rows do not match channels')
+            end
+            ext = zeros(nChan, nTime);
+            for t = 1:nTime
+                ext(:,t) = components_from_graph(bw(:,t), G);
+            end
         else
-            [x,b]=size(data);
-            subtype = 2;
+            % nd == 3: [chan x freq x time]
+            [nChan, nF, nT] = size(bw);
+            if size(G,1) ~= nChan
+                error('limo_tfce: neighbor graph rows do not match channels')
+            end
+            ext = zeros(nChan, nF, nT);
+            for f = 1:nF
+                for t = 1:nT
+                    ext(:,f,t) = components_from_graph(bw(:,f,t), G);
+                end
+            end
         end
-        
-        switch subtype
-            
-            case{1}                
-                % ------- tfce real data -----------
-                
-                % define increment size forced by dh
-                data_range = range(data(:));
-                if data_range > 1
-                    precision = round(data_range / dh);
-                    if precision > 200 % arbitrary decision to limit precision to 200th of the data range - needed as sometime under H0 one value can be very wrong
-                        increment = data_range / 200;
-                    else
-                        increment = data_range / precision;
-                    end
-                else
-                    increment = data_range *dh;
-                end
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) >= 0
-                    
-                    % select a height, obtain cluster map, obtain extent map (=cluster
-                    % map but with extent of cluster rather than number of the cluster)
-                    % then tfce score for that height
-                    index = 1;
-                    tfce = NaN(1,x,length(min(data(:)):increment:max(data(:))));
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    for h=min(data(:)):increment:max(data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        [clustered_map, num] = bwlabel((data > h));
-                        extent_map = zeros(1,x); % same as cluster map but contains extent value instead
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %    idx = clustered_map(:) == i;
-                        %    extent_map(idx) = sum(idx);
-                        % end
-                        tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(tfce,3);
-                    try close(f); end %#ok<*TRYNC>
-                    if nargout == 2
-                        thresholded_maps = tfce;
-                        thresholded_maps(:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                    end
-                    
-                else
-                    
-                    pos_data = (data > 0).*data;
-                    neg_data = abs((data < 0).*data);
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    clear data
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                    pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                    pos_tfce = NaN(1,x,l); index = 1;
-                    for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        [clustered_map, num] = bwlabel((pos_data > h));
-                        extent_map = zeros(1,x);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %     idx = clustered_map(:) == i;
-                        %    extent_map(idx) = sum(idx);
-                        % end
-                        pos_tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    hindex = index-1;
-                    l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                    neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                    neg_tfce = NaN(1,x,l); index = 1;
-                    for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                        if updatebar ==1; waitbar((hindex+index)/nsteps); end
-                        [clustered_map, num] = bwlabel((neg_data > h));
-                        extent_map = zeros(1,x);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %    idx = clustered_map(:) == i;
-                        %    extent_map(idx) = sum(idx);
-                        % end
-                        neg_tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(pos_tfce,3)+nansum(neg_tfce,3);
-                    try close(f); end
-                    if nargout == 2
-                        thresholded_maps = NaN(size(pos_tfce,1),size(pos_tfce,2),...
-                            size(neg_tfce,3)+size(pos_tfce,3));
-                        thresholded_maps(:,:,size(neg_tfce,3):-1:1)  = neg_tfce;
-                        thresholded_maps(:,:,size(neg_tfce,3)+1:end) = pos_tfce;
-                        thresholded_maps(:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                   end
-                end
-                
-                
-            case{2}
-                % ------- tfce bootstrapped data under H0 --------------
-                tfce_score = NaN(1,x,b);
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) > 0
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        if updatebar ==1; waitbar(boot/b); end
-                        tmp_data = squeeze(data(:,boot));
-                        % define increment size forced by dh
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        index = 1;
-                        tfce = NaN(1,x,length(min(tmp_data(:)):increment:max(tmp_data(:))));
-                        % fprintf('estimating tfce under H0 boot %g \n',boot)
-                        
-                        for h=min(tmp_data(:)):increment:max(tmp_data(:))
-                            [clustered_map, num] = bwlabel((tmp_data > h));
-                            extent_map = zeros(1,x);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        tfce_score(1,:,boot) = nansum(tfce,3);
-                    end
-                    try close(f); end
-                    
-                else
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        
-                        if updatebar ==1; waitbar(boot/b); end
-                        % fprintf('estimating tfce under H0 for boot %g \n',boot)
-                        tmp_data = squeeze(data(:,boot));
-                        
-                        % define increment size
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        pos_data = (tmp_data > 0).*tmp_data;
-                        neg_data = abs((tmp_data < 0).*tmp_data);
-                        clear tmp_data
-                        
-                        % select a height, obtain cluster map, obtain extent map
-                        % then tfce score for that height
-                        l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                        pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                        pos_tfce = NaN(1,x,l); index = 1;
-                        for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                            [clustered_map, num] = bwlabel((pos_data > h));
-                            extent_map = zeros(1,x);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            pos_tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                        neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                        neg_tfce = NaN(1,x,l); index = 1;
-                        for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                            [clustered_map, num] = bwlabel((neg_data > h));
-                            extent_map = zeros(1,x);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            neg_tfce(1,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        % compute final score
-                        tfce_score(1,:,boot) = nansum(pos_tfce,3)+nansum(neg_tfce,3);
-                    end
-                    try close(f); end
-                end
-                
-        end
-        
-        
-        % ---------------------------------------------------------------------
-    case{2} % 2D data
-        % ---------------------------------------------------------------------
-        
-        
-        [x,y,b]=size(data);
-        if b == 1
-            subtype = 1;
-        else
-            subtype = 2;
-        end
-        
-        switch subtype
-            
-            case{1}
-                
-                % ------- tfce real data -----------
-                
-                % define increment size forced by dh
-                data_range = range(data(:));
-                if data_range > 1
-                    precision = round(data_range / dh);
-                    if precision > 200
-                        increment = data_range / 200;
-                    else
-                        increment = data_range / precision;
-                    end
-                else
-                    increment = data_range *dh;
-                end
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) > 0
-                    
-                    % select a height, obtain cluster map, obtain extent map (=cluster
-                    % map but with extent of cluster rather than number of the cluster)
-                    % then tfce score for that height
-                    index = 1;
-                    tfce = NaN(x,y,length(min(data(:)):increment:max(data(:))));
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    for h=min(data(:)):increment:max(data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        if isempty(channeighbstructmat)
-                            [clustered_map, num] = bwlabel((data > h),4);
-                        else
-                            [clustered_map, num] = limo_findcluster((data > h), channeighbstructmat,2);
-                            %[clustered_map, num] = limo_findcluster_mult((data > h), channeighbstructmat,0);
-                        end
-                        
-                        extent_map = zeros(x,y); % same as cluster map but contains extent value instead
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %    idx = clustered_map(:) == i;
-                        %     extent_map(idx) = sum(idx);
-                        % end
-                        tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(tfce,3);
-                    try close(f); end
-                    if nargout == 2
-                        thresholded_maps = tfce;
-                        thresholded_maps(:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                    end
-                    
-                else
-                    
-                    pos_data = (data > 0).*data;
-                    neg_data = abs((data < 0).*data);
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    clear data
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                    pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                    pos_tfce = NaN(x,y,l); index = 1;
-                    for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        if isempty(channeighbstructmat)
-                            [clustered_map, num] = bwlabel((pos_data > h),4);
-                        else
-                            [clustered_map, num] = limo_findcluster((pos_data > h), channeighbstructmat,2);
-                        end
-                        
-                        extent_map = zeros(x,y);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %     idx = clustered_map(:) == i;
-                        %     extent_map(idx) = sum(idx);
-                        % end
-                        pos_tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    hindex = index-1;
-                    l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                    neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                    neg_tfce = NaN(x,y,l); index = 1;
-                    for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                        if updatebar ==1; waitbar((hindex+index)/nsteps); end
-                        if isempty(channeighbstructmat)
-                            [clustered_map, num] = bwlabel((neg_data > h),4);
-                        else
-                            [clustered_map, num] = limo_findcluster((neg_data > h), channeighbstructmat,2);
-                        end
-                        
-                        extent_map = zeros(x,y);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %     idx = clustered_map(:) == i;
-                        %     extent_map(idx) = sum(idx);
-                        % end
-                        neg_tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(pos_tfce,3)+nansum(neg_tfce,3);
-                    try close(f); end
-                    if nargout == 2
-                        thresholded_maps = NaN(size(pos_tfce,1),size(pos_tfce,2),...
-                            size(neg_tfce,3)+size(pos_tfce,3));
-                        thresholded_maps(:,:,size(neg_tfce,3):-1:1)  = neg_tfce;
-                        thresholded_maps(:,:,size(neg_tfce,3)+1:end) = pos_tfce;
-                        thresholded_maps(:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                   end
-                end
-                
-                
-            case{2}
-                % ------- tfce bootstrapped data under H0 --------------
-                tfce_score = NaN(x,y,b);
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) > 0
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        if updatebar ==1; waitbar(boot/b); end
-                        tmp_data = squeeze(data(:,:,boot));
-                        % define increment size
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        index = 1; tfce = NaN(x,y,length(min(tmp_data(:)):increment:max(tmp_data(:))));
-                        % fprintf('estimating tfce under H0 boot %g \n',boot)
-                        
-                        for h=min(tmp_data(:)):increment:max(tmp_data(:))
-                            if isempty(channeighbstructmat)
-                                [clustered_map, num] = bwlabel((tmp_data > h),4);
-                            else
-                                [clustered_map, num] = limo_findcluster((tmp_data > h), channeighbstructmat,2);
-                            end
-                            
-                            extent_map = zeros(x,y);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %    idx = clustered_map(:) == i;
-                            %    extent_map(idx) = sum(idx);
-                            % end
-                            tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        tfce_score(:,:,boot) = nansum(tfce,3);
-                    end
-                    try close(f); end
-                    
-                else
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        
-                        if updatebar ==1; waitbar(boot/b); end
-                        % fprintf('estimating tfce under H0 for boot %g \n',boot)
-                        tmp_data = squeeze(data(:,:,boot));
-                        
-                        % define increment size
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        pos_data = (tmp_data > 0).*tmp_data;
-                        neg_data = abs((tmp_data < 0).*tmp_data);
-                        clear tmp_data
-                        
-                        % select a height, obtain cluster map, obtain extent map
-                        % then tfce score for that height
-                        l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                        pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                        pos_tfce = NaN(x,y,l); index = 1;
-                        for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                            if isempty(channeighbstructmat)
-                                [clustered_map, num] = bwlabel((pos_data > h),4);
-                            else
-                                [clustered_map, num] = limo_findcluster((pos_data > h), channeighbstructmat,2);
-                            end
-                            
-                            extent_map = zeros(x,y);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            pos_tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                        neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                        neg_tfce = NaN(x,y,l); index = 1;
-                        for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                            if isempty(channeighbstructmat)
-                                [clustered_map, num] = bwlabel((neg_data > h),4);
-                            else
-                                [clustered_map, num] = limo_findcluster((neg_data > h), channeighbstructmat,2);
-                            end
-                            
-                            extent_map = zeros(x,y);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %    idx = clustered_map(:) == i;
-                            %    extent_map(idx) = sum(idx);
-                            % end
-                            neg_tfce(:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        % compute final score
-                        tfce_score(:,:,boot) = nansum(pos_tfce,3)+nansum(neg_tfce,3);
-                    end
-                    try close(f); end
-                end
-                
-        end
-        
-        
-        % ---------------------------------------------------------------------
-    case{3} % 3D data
-        % ---------------------------------------------------------------------
-        
-        [x,y,z,b]=size(data);
-        if b == 1
-            subtype = 1;
-        else
-            subtype = 2;
-        end
-        
-        switch subtype
-            
-            case{1}
-                % ------- tfce real data -----------
-                
-                % define increment size forced by dh
-                data_range = range(data(:));
-                if data_range > 1
-                    precision = round(data_range / dh);
-                    if precision > 200
-                        increment = data_range / 200;
-                    else
-                        increment = data_range / precision;
-                    end
-                else
-                    increment = data_range *dh;
-                end
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) > 0
-                    
-                    % select a height, obtain cluster map, obtain extent map (=cluster
-                    % map but with extent of cluster rather than number of the cluster)
-                    % then tfce score for that height
-                    index = 1;
-                    tfce = NaN(x,y,z,length(min(data(:)):increment:max(data(:))));
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    for h=min(data(:)):increment:max(data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        try
-                            [clustered_map, num] = limo_findcluster((data > h), channeighbstructmat,2);
-                        catch
-                            [clustered_map,num] = bwlabel((data > h)); % this allow continuous mapping
-                        end
-                        
-                        extent_map = zeros(x,y,z);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %    idx = clustered_map(:) == i;
-                        %    extent_map(idx) = sum(idx);
-                        % end
-                        tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(tfce,4);
-                    try close(f); end
-                    if nargout == 2
-                        thresholded_maps = tfce;
-                        thresholded_maps(:,:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                    end
-                    
-                else
-                    
-                    pos_data = (data > 0).*data;
-                    neg_data = abs((data < 0).*data);
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'Thresholding levels','name','TFCE');
-                    end
-                    
-                    nsteps = length(min(data(:)):increment:max(data(:)));
-                    clear data
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                    pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                    pos_tfce = NaN(x,y,z,l); index = 1;
-                    for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                        if updatebar ==1; waitbar(index/nsteps); end
-                        try
-                            [clustered_map, num] = limo_findcluster((pos_data > h), channeighbstructmat,2);
-                        catch
-                            [clustered_map,num] = bwlabel((pos_data > h));
-                        end
-                        
-                        extent_map = zeros(x,y,z);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %     idx = clustered_map(:) == i;
-                        %     extent_map(idx) = sum(idx);
-                        % end
-                        pos_tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    hindex = index-1;
-                    l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                    neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                    neg_tfce = NaN(x,y,z,l); index = 1;
-                    for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                        if updatebar ==1; waitbar((hindex+index)/nsteps); end
-                        try
-                            [clustered_map, num] = limo_findcluster((neg_data > h), channeighbstructmat,2);
-                        catch
-                            [clustered_map,num] = bwlabel((neg_data > h));
-                        end
-                        
-                        extent_map = zeros(x,y,z);
-                        extent_map = integrate(clustered_map,num,extent_map);
-                        % for i=1:num
-                        %     idx = clustered_map(:) == i;
-                        %     extent_map(idx) = sum(idx);
-                        % end
-                        neg_tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                        index = index +1;
-                    end
-                    
-                    % compute final score
-                    tfce_score = nansum(pos_tfce,4)+nansum(neg_tfce,4);
-                    try close(f); end
-                    if nargout == 2
-                        thresholded_maps = NaN(size(pos_tfce,1),size(pos_tfce,2),...
-                            size(neg_tfce,3)+size(pos_tfce,3));
-                        thresholded_maps(:,:,size(neg_tfce,3):-1:1)  = neg_tfce;
-                        thresholded_maps(:,:,size(neg_tfce,3)+1:end) = pos_tfce;
-                        thresholded_maps(:,:,squeeze(sum(squeeze(sum(thresholded_maps,1)),1))==0) = [];
-                    end
-               end
-                
-                
-            case{2}
-                % ------- tfce bootstrapped data under H0 --------------
-                tfce_score = NaN(x,y,z,b);
-                
-                % check negative values if so do negate and add scores
-                if min(data(:)) > 0
-                    
-                    % select a height, obtain cluster map, obtain extent map
-                    % then tfce score for that height
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        if updatebar ==1; waitbar(boot/b); end
-                        tmp_data = squeeze(data(:,:,:,boot));
-                        % define increment size
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        index = 1; tfce = NaN(x,y,z,length(min(tmp_data(:)):increment:max(tmp_data(:))));
-                        % fprintf('estimating tfce under H0 boot %g \n',boot)
-                        
-                        for h=min(tmp_data(:)):increment:max(tmp_data(:))
-                            try
-                                [clustered_map, num] = limo_findcluster((tmp_data > h), channeighbstructmat,2);
-                            catch
-                                [clustered_map,num] = bwlabel((tmp_data > h));
-                            end
-                            
-                            extent_map = zeros(x,y,z);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        tfce_score(:,:,:,boot) = nansum(tfce,4);
-                    end
-                    try close(f); end
-                    
-                else
-                    
-                    if updatebar ==1
-                        f = waitbar(0,'percentage of bootstraps analyzed','name','TFCE');
-                    end
-                    
-                    for boot=1:b
-                        
-                        if updatebar ==1; waitbar(boot/b); end
-                        % fprintf('estimating tfce under H0 for boot %g \n',boot)
-                        tmp_data = squeeze(data(:,:,:,boot));
-                        
-                        % define increment size
-                        data_range = range(tmp_data(:));
-                        if data_range > 1
-                            precision = round(data_range / dh);
-                            if precision > 200
-                                increment = data_range / 200;
-                            else
-                                increment = data_range / precision;
-                            end
-                        else
-                            increment = data_range *dh;
-                        end
-                        
-                        pos_data = (tmp_data > 0).*tmp_data;
-                        neg_data = abs((tmp_data < 0).*tmp_data);
-                        clear tmp_data
-                        
-                        % select a height, obtain cluster map, obtain extent map
-                        % then tfce score for that height
-                        l = length(min(pos_data(:)):increment:max(pos_data(:)));
-                        pos_increment = (max(pos_data(:)) - min(pos_data(:))) / l;
-                        pos_tfce = NaN(x,y,z,l); index = 1;
-                        for h=min(pos_data(:)):pos_increment:max(pos_data(:))
-                            try
-                                [clustered_map, num] = limo_findcluster((pos_data > h), channeighbstructmat,2);
-                            catch
-                                [clustered_map,num] = bwlabel((pos_data > h));
-                            end
-                            
-                            extent_map = zeros(x,y,z);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            pos_tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        l = length(min(neg_data(:)):increment:max(neg_data(:)))-1;
-                        neg_increment = (max(neg_data(:)) - min(neg_data(:))) / l;
-                        neg_tfce = NaN(x,y,z,l); index = 1;
-                        for h=min(neg_data(:)):neg_increment:max(neg_data(:))
-                            try
-                                [clustered_map, num] = limo_findcluster((neg_data > h), channeighbstructmat,2);
-                            catch
-                                [clustered_map,num] = bwlabel((neg_data > h));
-                            end
-                            
-                            extent_map = zeros(x,y,z);
-                            extent_map = integrate(clustered_map,num,extent_map);
-                            % for i=1:num
-                            %     idx = clustered_map(:) == i;
-                            %     extent_map(idx) = sum(idx);
-                            % end
-                            neg_tfce(:,:,:,index) = (extent_map.^E).*h^H.*increment;
-                            index = index +1;
-                        end
-                        
-                        % compute final score
-                        tfce_score(:,:,:,boot) = nansum(pos_tfce,4)+nansum(neg_tfce,4);
-                    end
-                    try close(f); end
-                end
-                
-        end
+    end
+
+    tfce = tfce + (ext.^E) * (h^H) * step_size(hvec, i);
+    if updatebar && mod(i, print_every) == 0
+        fprintf('.');
+    end
+end
+if updatebar, fprintf(' %d/%d\n', numel(hvec), numel(hvec)); end
+end
+
+function ds = step_size(hvec, i)
+% piecewise constant step size between heights
+if numel(hvec) == 1
+    ds = 1;
+elseif i == 1
+    ds = hvec(2) - hvec(1);
+else
+    ds = hvec(i) - hvec(i-1);
+end
+if ~isfinite(ds) || ds <= 0
+    ds = 0;
 end
 end
 
-%% faster integration a la Bruno Giordano
-function extent_map = integrate(clustered_map,num,extent_map)
+function extent = components_from_graph(active, G)
+% active: logical [n x 1], G: logical [n x n] symmetric, zero diag
+n = numel(active);
+extent = zeros(n,1);
+if ~any(active), return, end
 
-clustered_map=clustered_map(:);
-nv=histc(clustered_map,0:num);
-[~,idxall]=sort(clustered_map,'ascend');
-idxall(1:nv(1))=[];
-nv(1)=[];
-ends=cumsum(nv);
-inis=ends-nv+1;
-for i=1:num
-    idx=idxall(inis(i):ends(i));
-    extent_map(idx)=nv(i);
+% restrict to active nodes
+idx = find(active);
+sub = G(idx, idx);
+% find components by BFS/DFS
+visited = false(numel(idx),1);
+for k = 1:numel(idx)
+    if ~visited(k)
+        comp = bfs(sub, k);
+        visited(comp) = true;
+        nodes = idx(comp);
+        extent(nodes) = numel(nodes);
+    end
 end
+end
+
+function comp = bfs(A, s)
+% breadth-first search on adjacency A starting at node s
+n = size(A,1);
+comp = false(n,1);
+q = s;
+comp(s) = true;
+head = 1;
+while head <= numel(q)
+    v = q(head); head = head + 1;
+    nbr = find(A(v,:));
+    nbr = nbr(~comp(nbr));
+    comp(nbr) = true;
+    q = [q nbr]; %#ok<AGROW>
+end
+comp = find(comp);
 end
 

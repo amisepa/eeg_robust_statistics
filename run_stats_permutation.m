@@ -320,18 +320,3 @@ wv = sum( (w - mean(w)).^2 ) / max(n - 1, 1);
 if isnan(wv), wv = 0; end
 end
 
-% ===== put this helper as a SUBFUNCTION at the end of the file =====
-function [h, q] = make_parfor_waitbar(N, titleStr)
-% Waitbar that updates from parfor workers via a DataQueue
-h = waitbar(0, sprintf('%s 0%%', titleStr));
-q = parallel.pool.DataQueue;
-cnt = 0;  % lives on client
-afterEach(q, @update);
-    function update(~)
-        cnt = cnt + 1;
-        frac = min(cnt / N, 1);
-        if isvalid(h)
-            waitbar(frac, h, sprintf('%s %2.0f%%', titleStr, 100*frac));
-        end
-    end
-end

@@ -76,24 +76,47 @@ switch mcctype
         [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
 
     case 3
-        % Spatiotemporal threshold-free cluster enhancement (TFCE) correction
-        ndim = ndims(tvals);
+        % Spatiotemporal TFCE correction with FWER max control (mask + pcorr)
+        % Spatiotemporal TFCE correction with FWER max control (mask + pcorr)
+        ndim  = ndims(tvals);
         nPerm = size(tvals_H0, 3);
-        tfce_H0_score = nan(size(tvals_H0));
-        disp("Computing threshold-free cluster enhancement (TFCE)...")
-        is_double = isa(tvals_H0, 'double');
-        tvals_H0_single = single(tvals_H0);           % heavy array
-        % q = parallel.pool.DataQueue; c = 0; afterEach(q,@(~)fprintf('\rTFCE %d/%d', c, nPerm));
-        % parfor b = 1:nPerm
-        %     tfce_H0_score(:,:,b) = limo_tfce(ndim, tvals_H0_single(:,:,b), neighbormatrix, 0);
-        %     c = c + 1; send(q,1);
-        % end
-        % fprintf('\n');
-        tfce_H0_score = limo_tfce(ndim,tvals_H0_single,neighbormatrix,1);
-        if is_double
+
+        % Neighbor matrix cleanup (once)
+        if ~isempty(neighbormatrix)
+            neighbormatrix = logical(neighbormatrix);
+            neighbormatrix = neighbormatrix | neighbormatrix.';
+            d = size(neighbormatrix,1);
+            neighbormatrix(1:d+1:end) = false;
+        end
+
+        % Allocate TFCE null scores
+        tfce_H0_score = nan(size(tvals_H0), 'like', tvals_H0);
+
+        % Optional: compute TFCE on single to cut memory traffic
+        use_single = ~isa(tvals_H0, 'single');
+        if use_single
+            tvals_H0_work = single(tvals_H0);
+        else
+            tvals_H0_work = tvals_H0;
+        end
+
+        disp('Computing threshold-free cluster enhancement (TFCE)...')
+        [hTFCE, qTFCE] = make_parfor_waitbar(nPerm, 'TFCE perms');
+        parfor b = 1:nPerm
+            tfce_H0_score(:,:,b) = limo_tfce(ndim, tvals_H0_work(:,:,b), neighbormatrix, 0);
+            send(qTFCE, 1);   % tick progress
+        end
+        close(hTFCE);
+
+        % Cast back if we ran on single but want double outputs
+        if use_single && isa(tvals_H0, 'double')
             tfce_H0_score = double(tfce_H0_score);
         end
+
+        % Observed TFCE (quiet)
         tfce_score = limo_tfce(ndim, tvals, neighbormatrix, 0);
+
+        % Max-TFCE FWER correction -> mask and corrected p
         [mask, pcorr] = correct_max(tfce_score, tfce_H0_score, pthresh);
 
     otherwise

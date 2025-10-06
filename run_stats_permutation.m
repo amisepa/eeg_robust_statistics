@@ -82,13 +82,16 @@ else
             x1c = []; x2c = [];
             tv  = 0;  pv  = 1;
 
-            x1 = data1(iChan, t, :); x1 = x1(:);
-            x2 = data2(iChan, t, :); x2 = x2(:);
+            x1 = data1(iChan, t, :); 
+            x1 = x1(:);
+            x2 = data2(iChan, t, :); 
+            x2 = x2(:);
 
             if is_dpt
                 keep = ~(isnan(x1) | isnan(x2));
                 if any(keep)
-                    x1c = x1(keep); x2c = x2(keep);
+                    x1c = x1(keep); 
+                    x2c = x2(keep);
                 end
             else
                 if any(~isnan(x1)), x1c = x1(~isnan(x1)); end
@@ -196,12 +199,13 @@ close(hPerm);
 
 end
 
+
+
 % ===================== helpers =====================
 
 function [tvec, pvec] = t_mean_matrix_fast(X1, X2, dpt)
 % X1, X2 are [n x nTimes], NaN allowed
 eps_se = 1e-12;
-nTimes = size(X1,2);
 if strcmpi(dpt,'dpt')
     mask = ~isnan(X1) & ~isnan(X2);       % [n x nTimes]
     D = X1 - X2; D(~mask) = NaN;

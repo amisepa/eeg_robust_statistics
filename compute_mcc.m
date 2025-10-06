@@ -42,7 +42,7 @@ tfce_H0_score = [];
 
 % path to functions
 repo = fileparts(which("compute_mcc.m"));
-addpath(fullfile(repo, 'functions'))
+addpath(genpath(repo))
 
 % % Accept 2D [nTimes x nSub] by promoting to [1 x nTimes x nSub]
 % if ndims(tvals) == 2
@@ -55,6 +55,12 @@ addpath(fullfile(repo, 'functions'))
 % Get neighbors
 [~, neighbormatrix] = get_channelneighbors(chanlocs);
 
+% Ensure neighbormatrix is sanitized
+neighbormatrix = logical(neighbormatrix);
+neighbormatrix = neighbormatrix | neighbormatrix.';  % symmetrize
+neighbormatrix(1:size(neighbormatrix,1)+1:end) = false; % zero diagonal
+
+
 switch mcctype
     case 0
         % uncorrected
@@ -62,26 +68,32 @@ switch mcctype
         mask = pcorr <= pthresh;
 
     case 1
-        % max-likelihood percentile
+        % t-max correction
         [mask, pcorr] = correct_max(abs(tvals), abs(tvals_H0), pthresh);
 
     case 2
-        % Spatiotemporl cluster-correction
+        % Spatiotemporal cluster-based correction
         [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
 
     case 3
-        % Spatiotemporal TFCE corrected
+        % Spatiotemporal threshold-free cluster enhancement (TFCE) correction
         ndim = ndims(tvals);
         nPerm = size(tvals_H0, 3);
         tfce_H0_score = nan(size(tvals_H0));
         disp("Computing threshold-free cluster enhancement (TFCE)...")
-        parfor b = 1:nPerm
-            if mod(b, 50) == 0
-                fprintf(' Permutation %d/%d\n', b, nPerm);
-            end
-            tfce_H0_score(:,:,b) = limo_tfce(ndim, tvals_H0(:,:,b), neighbormatrix, 0);
+        is_double = isa(tvals_H0, 'double');
+        tvals_H0_single = single(tvals_H0);           % heavy array
+        % q = parallel.pool.DataQueue; c = 0; afterEach(q,@(~)fprintf('\rTFCE %d/%d', c, nPerm));
+        % parfor b = 1:nPerm
+        %     tfce_H0_score(:,:,b) = limo_tfce(ndim, tvals_H0_single(:,:,b), neighbormatrix, 0);
+        %     c = c + 1; send(q,1);
+        % end
+        % fprintf('\n');
+        tfce_H0_score = limo_tfce(ndim,tvals_H0_single,neighbormatrix,1);
+        if is_double
+            tfce_H0_score = double(tfce_H0_score);
         end
-        tfce_score = limo_tfce(ndim, tvals, neighbormatrix);
+        tfce_score = limo_tfce(ndim, tvals, neighbormatrix, 0);
         [mask, pcorr] = correct_max(tfce_score, tfce_H0_score, pthresh);
 
     otherwise

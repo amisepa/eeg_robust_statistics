@@ -1,4 +1,4 @@
-function [tfce_score,thresholded_maps] = limo_tfce(varargin)
+function [tfce_score,thresholded_maps] = limo_tfce_mod(varargin)
 
 % implementation of the Threshold-free cluster enhancement method
 % developped for fMRI by Smith & Nichols, NeuroImage 44(2009), 83-98

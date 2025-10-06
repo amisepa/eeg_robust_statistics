@@ -1,0 +1,3 @@
+[submodule "external/limo_tools"]
+	path = external/limo_tools
+	url = https://github.com/LIMO-EEG-Toolbox/limo_tools.git

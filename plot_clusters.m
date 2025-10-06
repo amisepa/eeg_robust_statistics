@@ -86,7 +86,8 @@ for iClust = 1:height(summary_tbl)
     ch = summary_tbl.Channel{iClust};
     if isstring(ch), ch = char(ch); end
 
-    % ----- Topography or Cortex at peak freq -----
+
+    %%%%%%%%%%%% TOPO/BRAIN PLOT AT PEAK FREQUENCY/TIME/SCALE %%%%%%%%%%%%
     topo_mask = false(nChan,1);
     if iClust <= numel(mask_clusters) && ~isempty(mask_clusters{iClust})
         mc = mask_clusters{iClust};
@@ -113,7 +114,6 @@ for iClust = 1:height(summary_tbl)
 
         % Now capture the figure that allplots_cortex_BS created
         hs.topo{iClust} = gcf;
-        title(sprintf('Cluster %d (%.2f Hz) - Cortex', iClust, f2(fi)));
 
     else
         % Scalp topography path
@@ -130,11 +130,18 @@ for iClust = 1:height(summary_tbl)
         catch
             topoplot(topo_map(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
         end
-        title(sprintf('Cluster %d (%.2f Hz)', iClust, f(fi)));
-        colorbar;
+        c = colorbar; ylabel(c,'t-values','FontWeight','bold','FontSize',11)
+        set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
+
     end
 
-    % ----- Frequency curve at peak channel -----
+    % title(sprintf('Cluster %d (%.2f Hz)', iClust, f(fi)));
+    title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
+
+    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+
+
+    %%%%%%%%%%%%%%%%%% COURSE PLOT AT PEAK CHANNEL/AREA %%%%%%%%%%%%%%%%%%
     sz = size(map);
 
     % Find channel index for curve
@@ -228,10 +235,13 @@ for iClust = 1:height(summary_tbl)
     end
     ylim([ybar ylims(2)]);
 
-    xlabel('Frequency (Hz)');
+    % xlabel('Frequency (Hz)');
+    xlabel('Scale factor');
     ylabel(line_label);
     title(sprintf('Cluster %d - %s', iClust, ch));
     set(gca,'FontSize',14,'LineWidth',1.2);
     box on; grid off; axis tight
+    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+
 end
 end

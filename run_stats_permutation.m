@@ -38,7 +38,7 @@ else
     error('Inputs must be 2D [nChan x nSub] or 3D [nChan x nTimes x nSub].')
 end
 
-[nChan, nTimes, ~] = size(data1);
+[nChan, nTimes, nSub] = size(data1);
 if size(data2,1) ~= nChan || size(data2,2) ~= nTimes
     error('data1 and data2 must match in [nChan x nTimes].')
 end
@@ -51,7 +51,6 @@ pvals_H0 = nan(nChan, nTimes, nPerm);
 % Sizes
 switch lower(dpt)
     case 'dpt'
-        nSub = size(data1,3);
         if size(data2,3) ~= nSub
             error('Paired case requires the same number of subjects in data1 and data2.')
         end
@@ -63,41 +62,55 @@ switch lower(dpt)
 end
 
 % Observed stats
+method_is_mean = strcmpi(method,'mean');
+is_dpt = strcmpi(dpt,'dpt');
 [hObs, qObs] = make_parfor_waitbar(nChan, 'Observed stats');
-parfor iChan = 1:nChan
-    for t = 1:nTimes
-        x1 = squeeze(data1(iChan, t, :));
-        x2 = squeeze(data2(iChan, t, :));
-
-        switch lower(dpt)
-            case 'dpt'
-                % remove subjects with NaN in either vector
-                keep = ~(isnan(x1) | isnan(x2));
-                x1c = x1(keep); x2c = x2(keep);
-            case 'idpt'
-                x1c = x1(~isnan(x1));
-                x2c = x2(~isnan(x2));
-        end
-
-        if strcmpi(method,'mean')
-            [tv, pv] = t_mean_safe(x1c, x2c, dpt);
-        elseif strcmpi(method,'trimmed mean')
-            [tv, pv] = t_yuen_safe(x1c, x2c, dpt, trim);
-        else
-            error("Unknown method: choose 'mean' or 'trimmed mean'")
-        end
-
-        tvals(iChan, t) = tv;
-        pvals(iChan, t) = pv;
+if method_is_mean
+    parfor iChan = 1:nChan
+        % Build [n x nTimes] once per channel, no squeeze in inner loop
+        X1 = permute(data1(iChan,:,:), [3 2 1]);  % [n x nTimes]
+        X2 = permute(data2(iChan,:,:), [3 2 1]);  % [n x nTimes]
+        [tv, pv] = t_mean_matrix_fast(X1, X2, dpt);
+        tvals(iChan,:) = tv;
+        pvals(iChan,:) = pv;
+        send(qObs, 1);
     end
-    send(qObs, 1);                           % notify progress
+else
+    parfor iChan = 1:nChan
+        for t = 1:nTimes
+            % Always initialize temporaries for parfor analysis
+            x1c = []; x2c = [];
+            tv  = 0;  pv  = 1;
+
+            x1 = data1(iChan, t, :); x1 = x1(:);
+            x2 = data2(iChan, t, :); x2 = x2(:);
+
+            if is_dpt
+                keep = ~(isnan(x1) | isnan(x2));
+                if any(keep)
+                    x1c = x1(keep); x2c = x2(keep);
+                end
+            else
+                if any(~isnan(x1)), x1c = x1(~isnan(x1)); end
+                if any(~isnan(x2)), x2c = x2(~isnan(x2)); end
+            end
+
+            if ~isempty(x1c) && ~isempty(x2c)
+                [tv, pv] = t_yuen_safe(x1c, x2c, dpt, trim);
+            end
+
+            tvals(iChan, t) = tv;
+            pvals(iChan, t) = pv;
+        end
+        send(qObs, 1);
+    end
 end
 close(hObs);
 
 % Synchronized permutations
 swap_mask = [];
 idx_perm  = [];
-if strcmpi(dpt, 'dpt')
+if is_dpt
     swap_mask = rand(size(data1,3), nPerm) > 0.5;   % [nSub x nPerm]
 else
     pooledN  = size(data1,3) + size(data2,3);
@@ -107,44 +120,61 @@ else
     end
 end
 
-% Null distribution
-NpermTot = nChan * nPerm;                    % total iterations: channel × permutation
+% ================= Null distribution =================
+NpermTot = nChan * nPerm;
 [hPerm, qPerm] = make_parfor_waitbar(NpermTot, 'Permutation nulls');
-parfor iChan = 1:nChan
-    A = data1(iChan,:,:);   % [1 x nTimes x n]
-    B = data2(iChan,:,:);
 
-    n1_local = size(A,3);
-    n2_local = size(B,3);
+% Precompute sizes once
+n1 = size(data1, 3);
+n2 = size(data2, 3);
+pooledN = n1 + n2;
+
+% Build permutation helpers
+if is_dpt
+    % [n1 x nPerm] logical swap mask
+    swap_mask = rand(n1, nPerm) > 0.5;
+else
+    % [nPerm x pooledN] permutation indices as doubles
+    idx_perm = zeros(nPerm, pooledN);
+    for k = 1:nPerm
+        idx_perm(k,:) = randperm(pooledN);
+    end
+end
+
+
+% parfor over channels
+parfor iChan = 1:nChan
+    A = data1(iChan,:,:);  % [1 x nTimes x n1]
+    B = data2(iChan,:,:);  % [1 x nTimes x n2]
 
     for perm = 1:nPerm
-        if strcmpi(dpt, 'dpt')
+        if is_dpt
+            % within-subject swaps
             permA = A; permB = B;
-            sw = swap_mask(:,perm);
+            sw = swap_mask(:,perm);            % [n1 x 1] logical
             if any(sw)
                 permA(:,:,sw) = B(:,:,sw);
                 permB(:,:,sw) = A(:,:,sw);
             end
         else
-            X = cat(3, A, B);
-            idx = idx_perm(perm,:);
-            permA = X(:,:,idx(1:n1_local));
-            permB = X(:,:,idx(n1_local+1:n1_local+n2_local));
+            % independent groups: reindex pooled
+            X = cat(3, A, B);                  % [1 x nTimes x pooledN]
+            idx = idx_perm(perm,:);            % 1 x pooledN
+            permA = X(:,:,idx(1:n1));          % [1 x nTimes x n1]
+            permB = X(:,:,idx(n1+1:pooledN));  % [1 x nTimes x n2]
         end
 
-        if strcmpi(method,'mean')
-            % vectorized across time with NaN handling
-            X1 = squeeze(permA(1,:,:));  % [n x nTimes] with possible NaN
-            X2 = squeeze(permB(1,:,:));
-            [tv, pv] = t_mean_matrix_safe(X1, X2, dpt);
+        if method_is_mean
+            X1 = permute(permA, [3 2 1]);      % [n x nTimes]
+            X2 = permute(permB, [3 2 1]);      % [n x nTimes]
+            [tv, pv] = t_mean_matrix_fast(X1, X2, dpt);
         else
-            % trimmed mean per time with NaN handling
             tv = nan(1, nTimes);
             pv = nan(1, nTimes);
             for t = 1:nTimes
-                xx1 = squeeze(permA(1,t,:));
-                xx2 = squeeze(permB(1,t,:));
-                if strcmpi(dpt,'dpt')
+                xx1 = permA(1,t,:); xx1 = xx1(:);
+                xx2 = permB(1,t,:); xx2 = xx2(:);
+                if is_dpt
                     keep = ~(isnan(xx1) | isnan(xx2));
                     xx1c = xx1(keep); xx2c = xx2(keep);
                 else
@@ -158,68 +188,69 @@ parfor iChan = 1:nChan
         tvals_H0(iChan,:,perm) = tv;
         pvals_H0(iChan,:,perm) = pv;
 
-        send(qPerm, 1);                      % notify progress
+        send(qPerm, 1);                        % one tick per inner iter
     end
 end
+
 close(hPerm);
 
 end
 
 % ===================== helpers =====================
 
-function [tstat, p] = t_mean_safe(x1, x2, dpt)
-% Two sided t test, data1 minus data2, robust to NaN and zero variance
+function [tvec, pvec] = t_mean_matrix_fast(X1, X2, dpt)
+% X1, X2 are [n x nTimes], NaN allowed
 eps_se = 1e-12;
+nTimes = size(X1,2);
 if strcmpi(dpt,'dpt')
-    n = numel(x1);
-    if n < 2
-        tstat = 0; p = 1; return
-    end
-    d  = x1 - x2;
-    md = mean(d,'omitnan');
-    sd = std(d,0,'omitnan');
-    se = sd ./ sqrt(n);
-    if ~isfinite(se) || se < eps_se
-        if abs(md) < eps_se, tstat = 0; p = 1;
-        else, tstat = sign(md)*Inf; p = 1/n; end
-        return
-    end
-    tstat = md ./ se;
+    mask = ~isnan(X1) & ~isnan(X2);       % [n x nTimes]
+    D = X1 - X2; D(~mask) = NaN;
+    n  = sum(mask,1);                      % 1 x nTimes
+    md = mean(D,1,'omitmissing');
+    sd = std(D,0,1,'omitmissing');
+    se = sd ./ sqrt(max(n,1));
+
+    % guards
+    tiny = ~isfinite(se) | (se < eps_se);
+    t   = md ./ se;
+    % substitute Inf when mean not tiny but se tiny
+    fix = tiny & isfinite(md) & (abs(md) >= eps_se);
+    t(fix) = sign(md(fix)).*Inf;
+    t(tiny & ~fix) = 0;
+
     df = max(n - 1, 1);
-    p = 2 * (1 - tcdf(abs(tstat), df));
+    p = 2 * (1 - tcdf(abs(t), df));
+
+    tvec = t; pvec = p;
 else
-    nA = numel(x1); nB = numel(x2);
-    if nA < 2 || nB < 2
-        tstat = 0; p = 1; return
-    end
-    mA = mean(x1,'omitnan');  mB = mean(x2,'omitnan');
-    vA = var(x1,0,'omitnan'); vB = var(x2,0,'omitnan');
-    se2 = vA./nA + vB./nB; se = sqrt(se2);
-    if ~isfinite(se) || se < eps_se
-        md = mA - mB;
-        if abs(md) < eps_se, tstat = 0; p = 1;
-        else, tstat = sign(md)*Inf; p = 1/(nA+nB); end
-        return
-    end
-    tstat = (mA - mB) ./ se;
-    % Welch Satterthwaite df, guard zeros
+    nA = sum(~isnan(X1),1); nB = sum(~isnan(X2),1);
+    mA = mean(X1,1,'omitmissing');     
+    mB = mean(X2,1,'omitmissing');
+    vA = var(X1,0,1,'omitmissing');    
+    vB = var(X2,0,1,'omitmissing');
+
+    se2 = vA./max(nA,1) + vB./max(nB,1);
+    se  = sqrt(se2);
+    md  = mA - mB;
+
+    tiny = ~isfinite(se) | (se < eps_se);
+    t    = md ./ se;
+    fix  = tiny & isfinite(md) & (abs(md) >= eps_se);
+    t(fix) = sign(md(fix)).*Inf;
+    t(tiny & ~fix) = 0;
+
     num = se2.^2;
-    den = (vA.^2)/(nA^2*(nA-1) + (nA==1)) + (vB.^2)/(nB^2*(nB-1) + (nB==1));
-    df = num./max(den, eps_se);
-    df = max(df, 1);
-    p = 2 * (1 - tcdf(abs(tstat), df));
+    den = (vA.^2) ./ (max(nA.^2 .* max(nA-1,1), 1)) + ...
+        (vB.^2) ./ (max(nB.^2 .* max(nB-1,1), 1));
+    df  = num ./ max(den, eps_se);
+    df  = max(df, 1);
+
+    p = 2 * (1 - tcdf(abs(t), df));
+
+    tvec = t; pvec = p;
 end
 end
 
-function [tvec, pvec] = t_mean_matrix_safe(X1, X2, dpt)
-% Columnwise t for matrices [n x nTimes], NaN safe, data1 minus data2
-nTimes = size(X1,2);
-tvec = nan(1,nTimes); pvec = nan(1,nTimes);
-for t = 1:nTimes
-    x1 = X1(:,t); x2 = X2(:,t);
-    [tvec(t), pvec(t)] = t_mean_safe(x1(~isnan(x1)), x2(~isnan(x2)), dpt);
-end
-end
 
 function [tstat, p] = t_yuen_safe(x1, x2, dpt, gamma)
 % Two sided Yuen test with safety for small N and NaNs, data1 minus data2

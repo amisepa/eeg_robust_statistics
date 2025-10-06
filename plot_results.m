@@ -85,4 +85,8 @@ if strcmpi(plot_type,'course') || strcmpi(plot_type,'all')
     title(sprintf('Course Plot (%s)', clust_tbl.Channel{idx}))
     box on
 end
+
+set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+
+
 end

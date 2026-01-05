@@ -1,194 +1,194 @@
-function [betas_obs, tvals, pvals, tvals_H0, pvals_H0] = run_stats_permutation_glm( ...
-    Y_all, X, condition_col, nSub, nPerm, varargin)
-% RUN_STATS_PERMUTATION_GLM
-% Vectorized OLS GLM with within-subject permutations and maxT (t-max) FWE correction.
+function [betas_obs, tvals_obs, pvals_obs, tvals_H0, pvals_H0] = run_stats_permutation_glm2( ...
+    data_cell, X, phase_col, nPerm, varargin)
+% RUN_STATS_PERMUTATION_GLM2
+% Vectorized OLS GLM across channels × features with within-subject permutations.
 %
-% Fixes versus original:
-% 1) Permutation inference is empirical (no tcdf-based p-values inside permutations)
-% 2) Multiple-comparisons control via maxT across all (chan x feat) for each predictor
-% 3) Supports >=2 observations per subject via within-subject shuffling of condition labels
+% Outputs:
+% - tvals_H0 is the full null distribution of t-values (correct for later corrections).
+% - pvals_obs are empirical permutation p-values (two-tailed, uncorrected).
+% - pvals_H0 is returned empty (tcdf-based p-values are omitted by design).
 %
-% INPUTS
-%   Y_all         [nChan x nFeat x nObs]
-%   X             [nObs x nP] canonical: [1, condition, group, condition.*group, duration(optional), ...]
-%   condition_col [nObs x 1] 0/1 coding for condition (must match X(:,2) in observed design)
-%   nSub          number of subjects
-%   nPerm         number of permutations
+% INPUTS:
+%   data_cell  - cell array {nSub}, each [nChan × nFeat × nTrials_subj]
+%   X          - observed design matrix [nObs × nPredictors]
+%   phase_col  - coding vector [nObs × 1] permuted within subject
+%   nPerm      - number of permutations
 %
-% Name-value:
-%   'Group'       group_col vector length nObs (required if nP>=3)
-%   'Subjects'    subj_idx vector length nObs (optional; inferred if evenly balanced)
-%   'Duration'    duration_col vector length nObs (required if nP>=5)
-%   'Progress'    true/false (default true)
-%   'StoreH0'     true/false store full tvals_H0 (default true, can be memory heavy)
+% OPTIONAL:
+%   'Duration' - duration covariate (optional, z-scored)
+%   'Group'    - group covariate (optional, z-scored unless binary/logic)
+%   'Progress' - true/false (default true)
 %
-% OUTPUTS
-%   betas_obs  [nChan x nFeat x nP]
-%   tvals      [nChan x nFeat x nP]
-%   pvals      [nChan x nFeat x nP] FWE-corrected p-values via maxT per predictor
-%   tvals_H0   [nChan x nFeat x nP x nPerm] (optional; empty if StoreH0=false)
-%   pvals_H0   returned as [] (kept for backward compatibility; empirical p-values are in pvals)
+% OUTPUTS:
+%   betas_obs  - [nChan × nFeat × nPredictors]
+%   tvals_obs  - [nChan × nFeat × nPredictors]
+%   pvals_obs  - [nChan × nFeat × nPredictors] empirical permutation p-values
+%   tvals_H0   - [nChan × nFeat × nPredictors × nPerm]
+%   pvals_H0   - [] (omitted)
 
-% ---------------- options ----------------
+% Parse optional inputs
 p = inputParser;
-addParameter(p, 'Group', []);
-addParameter(p, 'Subjects', []);
 addParameter(p, 'Duration', []);
+addParameter(p, 'Group', []);
 addParameter(p, 'Progress', true);
-addParameter(p, 'StoreH0', true);
 parse(p, varargin{:});
 
-group_col    = p.Results.Group;
-subj_idx     = p.Results.Subjects;
 duration_col = p.Results.Duration;
+group_col    = p.Results.Group;
 show_prog    = p.Results.Progress;
-storeH0      = p.Results.StoreH0;
 
-% ---------------- checks ----------------
-[nChan, nFeat, nObs] = size(Y_all);
-nP = size(X,2);
-
-if numel(condition_col) ~= nObs
-    error('condition_col must be length nObs');
+% Z-score continuous covariates
+if ~isempty(duration_col)
+    duration_col = zscore(duration_col(:));
 end
-condition_col = condition_col(:);
-
-if ~all(ismember([0 1], unique(condition_col)))
-    error('condition_col must contain both 0 and 1');
-end
-
-if nP >= 3 && isempty(group_col)
-    error('X has a group column but Group was not provided');
-end
-if nP >= 5 && isempty(duration_col)
-    error('X has a duration column but Duration was not provided');
-end
-
-if ~isempty(group_col),    group_col    = group_col(:);    end
-if ~isempty(duration_col), duration_col = duration_col(:); end
-
-% subject index
-if isempty(subj_idx)
-    trials_per_sub = nObs / nSub;
-    if mod(trials_per_sub,1) ~= 0
-        error('Observations are not evenly divisible by nSub. Provide Subjects index.');
+if ~isempty(group_col)
+    group_col = group_col(:);
+    if ~islogical(group_col) && ~all(ismember(unique(group_col), [0 1]))
+        group_col = zscore(group_col);
     end
-    subj_idx = repelem((1:nSub)', trials_per_sub);
-else
-    subj_idx = subj_idx(:);
-    if numel(subj_idx) ~= nObs
-        error('Subjects vector must be length nObs');
-    end
-    u = unique(subj_idx);
-    if numel(u) ~= nSub
-        error('Subjects index does not contain nSub unique subjects');
-    end
-    counts = arrayfun(@(s) sum(subj_idx==s), u);
-    if any(counts ~= counts(1))
-        error('Each subject must have the same number of observations for within-subject permutations');
-    end
-    trials_per_sub = counts(1);
 end
 
-if trials_per_sub < 2
-    error('Need at least 2 observations per subject for within-subject contrast');
+% Dimensions
+nSub = numel(data_cell);
+nChan = size(data_cell{1}, 1);
+nFeat = size(data_cell{1}, 2);
+nPredictors = size(X, 2);
+nObs = size(X, 1);
+
+if numel(phase_col) ~= nObs
+    error('phase_col must be length nObs');
+end
+phase_col = phase_col(:);
+
+% Detect trials per subject
+trials_per_sub = nObs / nSub;
+if mod(trials_per_sub, 1) ~= 0
+    error('nObs/nSub is not an integer. Check phase_col or data alignment.');
+end
+trials_per_sub = round(trials_per_sub);
+
+% Concatenate all subjects: [nChan × nFeat × nObs]
+data_all = cat(3, data_cell{:});
+if size(data_all,3) ~= nObs
+    error('Concatenated data has %d obs but X expects %d obs', size(data_all,3), nObs);
 end
 
-% precompute subject row lists
-sub_rows = arrayfun(@(s) find(subj_idx==s), (1:nSub)', 'uni', false);
-
-% ---------------- vectorize data ----------------
-% Y: [nObs x (nChan*nFeat)]
-Y = reshape(permute(Y_all, [3 1 2]), nObs, nChan*nFeat);
+% Vectorize features: Y [nObs × (nChan*nFeat)]
+Y = reshape(permute(data_all, [3 1 2]), nObs, nChan*nFeat);
 nF = size(Y,2);
 
-% ---------------- observed OLS fit ----------------
-if show_prog, fprintf('Observed fit: vectorized OLS\n'); end
+% ------------------------------
+% Observed GLM (OLS)
+% ------------------------------
+if show_prog
+    fprintf('Running observed GLM (vectorized OLS)...\n');
+end
 
-XtX     = X' * X;
-XtX_inv = pinv(XtX);
+XtX_inv = pinv(X' * X);
 rankX   = rank(X);
 dof     = max(nObs - rankX, 1);
 
-B    = XtX_inv * (X' * Y);     % [nP x nF]
-Yhat = X * B;
-Res  = Y - Yhat;
-mse  = sum(Res.^2, 1) / dof;   % [1 x nF]
-SE   = sqrt(bsxfun(@times, diag(XtX_inv), mse)); % [nP x nF]
-T    = B ./ SE;                % [nP x nF]
+B    = XtX_inv * (X' * Y);       % [nPred × nF]
+Res  = Y - X * B;                % [nObs × nF]
+mse  = sum(Res.^2, 1) / dof;     % [1 × nF]
+SE   = sqrt(bsxfun(@times, diag(XtX_inv), mse)); % [nPred × nF]
+Tobs = B ./ SE;                  % [nPred × nF]
 
 % reshape observed outputs
-betas_obs = permute(reshape(B', nChan, nFeat, nP), [1 2 3]);
-tvals     = permute(reshape(T', nChan, nFeat, nP), [1 2 3]);
+betas_obs = permute(reshape(B',    nChan, nFeat, nPredictors), [1 2 3]);
+tvals_obs = permute(reshape(Tobs', nChan, nFeat, nPredictors), [1 2 3]);
 
-% ---------------- permutation null + maxT ----------------
-if show_prog, fprintf('Running %d within-subject permutations...\n', nPerm); end
-
-if storeH0
-    tvals_H0 = nan(nChan, nFeat, nP, nPerm, 'like', Y_all);
-else
-    tvals_H0 = [];
+% ------------------------------
+% Permutations: build full H0 of t-values
+% ------------------------------
+if show_prog
+    fprintf('Running %d permutations...\n', nPerm);
 end
 
-% maxT per predictor and permutation
-maxT_H0 = nan(nP, nPerm);
-
-% columns 6+ are copied verbatim; if you include condition-dependent terms there,
-% you must rebuild them yourself inside the permutation loop.
-X_tail = [];
-if nP > 5
-    X_tail = X(:,6:end);
-end
+tvals_H0 = nan(nChan, nFeat, nPredictors, nPerm, 'like', data_all);
 
 parfor iPerm = 1:nPerm
-    % 1) permute condition labels within subject (preserves counts)
-    cond_perm = condition_col;
+
+    % 1) permute phase labels within subject
+    phase_perm = phase_col;
     for s = 1:nSub
-        rows = sub_rows{s};
-        cond_perm(rows) = cond_perm(rows(randperm(numel(rows))));
+        idx = ((s-1)*trials_per_sub + 1):(s*trials_per_sub);
+        phase_perm(idx) = phase_perm(idx(randperm(trials_per_sub)));
     end
 
-    % 2) rebuild permuted design matrix in canonical order
-    Xp = zeros(nObs, nP);
-    Xp(:,1) = 1;
-    if nP >= 2, Xp(:,2) = cond_perm; end
-    if nP >= 3, Xp(:,3) = double(group_col); end
-    if nP >= 4, Xp(:,4) = double(cond_perm) .* double(group_col); end
-    if nP >= 5, Xp(:,5) = duration_col; end
-    if ~isempty(X_tail), Xp(:,6:end) = X_tail; end
+    % 2) build permuted design
+    X_perm = build_permuted_X_simple(phase_perm, duration_col, group_col);
 
-    % 3) vectorized OLS on permuted design
-    XtXp     = Xp' * Xp;
-    XtXp_inv = pinv(XtXp);
-    dof_p    = max(nObs - rank(Xp), 1);
+    % 3) permuted OLS fit
+    XtX_inv_perm = pinv(X_perm' * X_perm);
+    dofp         = max(nObs - rank(X_perm), 1);
 
-    Bp   = XtXp_inv * (Xp' * Y);         % [nP x nF]
-    Resp = Y - Xp * Bp;
-    msep = sum(Resp.^2, 1) / dof_p;      % [1 x nF]
-    SEp  = sqrt(bsxfun(@times, diag(XtXp_inv), msep));
-    Tp   = Bp ./ SEp;                    % [nP x nF]
+    Bp   = XtX_inv_perm * (X_perm' * Y);
+    Resp = Y - X_perm * Bp;
 
-    if storeH0
-        tvals_H0(:,:,:,iPerm) = permute(reshape(Tp', nChan, nFeat, nP), [1 2 3]);
+    msep = sum(Resp.^2, 1) / dofp;
+    SEp  = sqrt(bsxfun(@times, diag(XtX_inv_perm), msep));
+    Tp   = Bp ./ SEp;
+
+    % store null t-values
+    tvals_H0(:,:,:,iPerm) = permute(reshape(Tp', nChan, nFeat, nPredictors), [1 2 3]);
+
+    if show_prog && mod(iPerm, 50) == 0
+        fprintf('  permutation %d/%d\n', iPerm, nPerm);
     end
-
-    % maxT across all features for each predictor
-    maxT_H0(:, iPerm) = max(abs(Tp), [], 2);
 end
 
-% ---------------- empirical maxT FWE p-values ----------------
-% pvals(chan,feat,p) = mean( maxT_H0(p,:) >= abs(T_obs(p,chan,feat)) )
-pvals = nan(nChan, nFeat, nP, 'like', Y_all);
-
-Tobs = reshape(permute(tvals, [3 1 2]), nP, nF); % [nP x nF]
-for j = 1:nP
-    thr = maxT_H0(j, :); % [1 x nPerm]
-    p_j = mean(thr(:) >= abs(Tobs(j,:)), 1); % [1 x nF]
-    pvals(:,:,j) = reshape(p_j, nChan, nFeat);
+% ------------------------------
+% Empirical permutation p-values for observed effects (two-tailed)
+% ------------------------------
+% p = (1 + sum(|Tperm| >= |Tobs|)) / (nPerm + 1)
+if show_prog
+    fprintf('Computing empirical permutation p-values (two-tailed, uncorrected)...\n');
 end
 
-% keep output for backward compatibility
+Tobs_abs = abs(Tobs); % [nPred x nF]
+
+Th0 = reshape(permute(tvals_H0, [3 1 2 4]), nPredictors, nF, nPerm); % [nPred x nF x nPerm]
+Th0_abs = abs(Th0);
+
+p_emp = nan(nPredictors, nF, 'like', data_all);
+for j = 1:nPredictors
+    Hj = squeeze(Th0_abs(j,:,:));   % [nF x nPerm]
+    oj = Tobs_abs(j,:).';           % [nF x 1]
+    cnt = sum(Hj >= oj, 2);         % [nF x 1]
+    p_emp(j,:) = (1 + cnt(:)') / (nPerm + 1);
+end
+
+pvals_obs = permute(reshape(p_emp', nChan, nFeat, nPredictors), [1 2 3]);
+
+% keep signature
 pvals_H0 = [];
 
-if show_prog, disp('Done: permutation GLM with maxT FWE correction.'); end
+if show_prog
+    disp('Done: permutation GLM (full H0 t-values retained; no tcdf outputs).');
+end
+end
+
+%% Helper
+function Xp = build_permuted_X_simple(phase_perm, duration_col, group_col)
+phase_perm = phase_perm(:);
+
+recov_vs_ret = zeros(size(phase_perm));
+recov_vs_ret(phase_perm == 3) = 1;
+recov_vs_ret(phase_perm == 2) = -1;
+
+Xp = [ ...
+    ones(size(phase_perm)), ...
+    double(phase_perm == 2), ...
+    recov_vs_ret ...
+];
+
+if ~isempty(duration_col)
+    Xp(:,end+1) = duration_col;
+end
+if ~isempty(group_col)
+    Xp(:,end+1) = group_col;
+    Xp(:,end+1) = group_col .* double(phase_perm == 2);
+    Xp(:,end+1) = group_col .* recov_vs_ret;
+end
 end

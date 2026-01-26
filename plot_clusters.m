@@ -65,54 +65,7 @@ for iClust = 1:height(summary_tbl)
     ch = summary_tbl.Channel{iClust};
     if isstring(ch), ch = char(ch); end
 
-    %%%%%%%%%%%% TOPO/BRAIN PLOT AT PEAK %%%%%%%%%%%%
-    topo_mask = false(nChan,1);
-    if iClust <= numel(mask) && ~isempty(mask{iClust})
-        mc = mask{iClust};
-        if size(mc,2) == nFreq, topo_mask = mc(:, fi); end
-    end
-
-    if strcmpi(dataType,'source')
-        load cm17.mat
-        load cortex; cortex = cortex_highres;
-
-        roiPSD = tvals(:, fi);
-        if iClust <= numel(mask) && ~isempty(mask{iClust}) && size(mask{iClust},2) >= fi
-            roiPSD(~mask{iClust}(:, fi)) = NaN;
-        end
-
-        if tmin < 0 && tmax > 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [-max(abs(tvals(:))) max(abs(tvals(:)))], cm17, 't-values', []);
-        elseif tmax <= 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [min(mean(tvals,2,'omitnan')) tmax], cm17b, 't-values', []);
-        elseif tmin >= 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [tmin max(mean(tvals,2,'omitnan'))], cm17a, 't-values', []);
-        end
-        hs.topo{iClust} = gcf;
-    else
-        load("colormap_bwr.mat"); dmap(1,:) = [.9 .9 .9]; % NaNs to gray
-
-        ci = find(strcmpi({chanlocs.labels}, ch), 1);
-        if isempty(ci)
-            warning('plot_clusters:MissingChan','Skipping cluster %d, channel %s not found.', iClust, ch);
-            continue
-        end
-
-        hs.topo{iClust} = figure('Color','w');
-        try
-            topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
-                     'verbose','off','colormap', dmap, 'whitebk','on');
-        catch
-            topoplot(tvals(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
-        end
-        c = colorbar; ylabel(c,'t-values','FontWeight','bold','FontSize',11)
-        set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
-    end
-
-    title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
-    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
-
-    %%%%%%%%%%%%%%%%%% CURVE PLOT AT PEAK CHANNEL %%%%%%%%%%%%%%%%%%
+        %%%%%%%%%%%%%%%%%% CURVE PLOT AT PEAK CHANNEL %%%%%%%%%%%%%%%%%%
     sz = size(map);
 
     % line-noise mask
@@ -245,5 +198,54 @@ for iClust = 1:height(summary_tbl)
     set(gca,'FontSize',14,'LineWidth',1.2);
     box on; grid off; axis tight
     set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+
+    
+    %%%%%%%%%%%% TOPO/BRAIN PLOT AT PEAK %%%%%%%%%%%%
+    topo_mask = false(nChan,1);
+    if iClust <= numel(mask) && ~isempty(mask{iClust})
+        mc = mask{iClust};
+        if size(mc,2) == nFreq, topo_mask = mc(:, fi); end
+    end
+
+    if strcmpi(dataType,'source')
+        load cm17.mat
+        load cortex; cortex = cortex_highres;
+
+        roiPSD = tvals(:, fi);
+        if iClust <= numel(mask) && ~isempty(mask{iClust}) && size(mask{iClust},2) >= fi
+            roiPSD(~mask{iClust}(:, fi)) = NaN;
+        end
+
+        if tmin < 0 && tmax > 0
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [-max(abs(tvals(:))) max(abs(tvals(:)))], cm17, 't-values', []);
+        elseif tmax <= 0
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [min(mean(tvals,2,'omitnan')) tmax], cm17b, 't-values', []);
+        elseif tmin >= 0
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [tmin max(mean(tvals,2,'omitnan'))], cm17a, 't-values', []);
+        end
+        hs.topo{iClust} = gcf;
+    else
+        load("colormap_bwr.mat"); dmap(1,:) = [.9 .9 .9]; % NaNs to gray
+
+        ci = find(strcmpi({chanlocs.labels}, ch), 1);
+        if isempty(ci)
+            warning('plot_clusters:MissingChan','Skipping cluster %d, channel %s not found.', iClust, ch);
+            continue
+        end
+
+        hs.topo{iClust} = figure('Color','w');
+        try
+            topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
+                     'verbose','off','colormap', dmap, 'whitebk','on');
+        catch
+            topoplot(tvals(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
+        end
+        c = colorbar; ylabel(c,'t-values','FontWeight','bold','FontSize',11)
+        set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
+    end
+
+    title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
+    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+
 end
 end

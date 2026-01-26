@@ -1,6 +1,6 @@
-function [betas_obs, tvals_obs, pvals_obs, tvals_H0, pvals_H0] = run_stats_permutation_glm2( ...
+function [betas_obs, tvals_obs, pvals_obs, tvals_H0, pvals_H0] = run_stats_permutation_glm( ...
     data_cell, X, phase_col, nPerm, varargin)
-% RUN_STATS_PERMUTATION_GLM2
+% RUN_STATS_PERMUTATION_GLM
 % Vectorized OLS GLM across channels × features with within-subject permutations.
 %
 % Outputs:

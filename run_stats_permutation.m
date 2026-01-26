@@ -61,6 +61,11 @@ switch lower(dpt)
         error("Unknown dependency type: use 'dpt' or 'idpt'")
 end
 
+% initiate parpool 
+if isempty(gcp('nocreate'))
+    parpool('local', maxNumCompThreads);
+end
+
 % Observed stats
 method_is_mean = strcmpi(method,'mean');
 is_dpt = strcmpi(dpt,'dpt');
@@ -110,40 +115,48 @@ else
 end
 close(hObs);
 
-% Synchronized permutations
-swap_mask = [];
-idx_perm  = [];
-if is_dpt
-    swap_mask = rand(size(data1,3), nPerm) > 0.5;   % [nSub x nPerm]
-else
-    pooledN  = size(data1,3) + size(data2,3);
-    idx_perm = zeros(nPerm, pooledN, 'uint32');
-    for perm = 1:nPerm
-        idx_perm(perm,:) = uint32(randperm(pooledN));
-    end
-end
-
 % ================= Null distribution =================
-NpermTot = nChan * nPerm;
-[hPerm, qPerm] = make_parfor_waitbar(NpermTot, 'Permutation nulls');
-
 % Precompute sizes once
 n1 = size(data1, 3);
 n2 = size(data2, 3);
 pooledN = n1 + n2;
 
-% Build permutation helpers
+fprintf('Starting permutation testing: %d channels × %d permutations = %d tests\n', nChan, nPerm, nChan * nPerm);
+
+% Build permutation helpers - initialize both to avoid parfor errors
+swap_mask = [];
+idx_perm = [];
+
 if is_dpt
+    fprintf('Pre-computing swap masks for paired design...\n');
     % [n1 x nPerm] logical swap mask
     swap_mask = rand(n1, nPerm) > 0.5;
+    fprintf('Done. Starting parallel permutations...\n');
 else
-    % [nPerm x pooledN] permutation indices as doubles
-    idx_perm = zeros(nPerm, pooledN);
+    fprintf('Pre-computing %d permutation indices for independent design...\n', nPerm);
+    % [nPerm x pooledN] permutation indices as uint16 to save memory
+    idx_perm = zeros(nPerm, pooledN, 'uint16');
     for k = 1:nPerm
-        idx_perm(k,:) = randperm(pooledN);
+        idx_perm(k,:) = uint16(randperm(pooledN));
     end
+    fprintf('Done. Starting parallel permutations...\n');
 end
 
+% Progress tracking via DataQueue
+progressQueue = parallel.pool.DataQueue;
+channelsCompleted = 0;
+afterEach(progressQueue, @(~) updateProgress());
+
+    function updateProgress()
+        channelsCompleted = channelsCompleted + 1;
+        pct = 100 * channelsCompleted / nChan;
+        if mod(channelsCompleted, max(1, floor(nChan/20))) == 0 || channelsCompleted == nChan
+            fprintf('%d/%d channels (%.1f%%) | %.1f min elapsed\n', ...
+                channelsCompleted, nChan, pct, toc(permTimer)/60);
+        end
+    end
+
+permTimer = tic;
 
 % parfor over channels
 parfor iChan = 1:nChan
@@ -162,7 +175,7 @@ parfor iChan = 1:nChan
         else
             % independent groups: reindex pooled
             X = cat(3, A, B);                  % [1 x nTimes x pooledN]
-            idx = idx_perm(perm,:);            % 1 x pooledN
+            idx = double(idx_perm(perm,:));    % Convert to double for indexing
             permA = X(:,:,idx(1:n1));          % [1 x nTimes x n1]
             permB = X(:,:,idx(n1+1:pooledN));  % [1 x nTimes x n2]
         end
@@ -190,12 +203,12 @@ parfor iChan = 1:nChan
 
         tvals_H0(iChan,:,perm) = tv;
         pvals_H0(iChan,:,perm) = pv;
-
-        send(qPerm, 1);                        % one tick per inner iter
     end
+    
+    send(progressQueue, true);  % Signal completion of this channel
 end
 
-close(hPerm);
+fprintf('\nPermutation testing complete! Total time: %.2f minutes\n', toc(permTimer)/60);
 
 end
 
@@ -319,4 +332,3 @@ end
 wv = sum( (w - mean(w)).^2 ) / max(n - 1, 1);
 if isnan(wv), wv = 0; end
 end
-

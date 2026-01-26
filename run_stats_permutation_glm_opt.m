@@ -1,6 +1,6 @@
-function [betas_obs, tvals_obs, tvals_H0, w_obs] = run_stats_permutation_glm_opt_limo_arch( ...
+function [betas_obs, tvals_obs, tvals_H0, w_obs] = run_stats_permutation_glm_opt( ...
     Y_all, X, condition_col, nSub, nPerm, varargin)
-% RUN_STATS_PERMUTATION_GLM_OPT_LIMO_ARCH
+% RUN_STATS_PERMUTATION_GLM_OPT
 %
 % LIMO-style architecture:
 %   - One observed GLM fit (OLS / IRLS / WLS)

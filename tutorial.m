@@ -118,7 +118,7 @@ for iSub = 1:nSub
     times = EEG.times;
 
     % Run GLM
-    [betas,rsquared,fstat,pvals,times] = run_glm(EEG.data,times,tlims,EEG.event,optimization,weightmethod);
+    [betas,rsquared,fstat,pvals,times] = run_glm_limo_style(EEG.data,times,tlims,EEG.event,optimization,weightmethod);
     
     % Save the results
     subject = EEG.subject;

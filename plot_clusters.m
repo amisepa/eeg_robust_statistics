@@ -192,7 +192,7 @@ for iClust = 1:height(summary_tbl)
         set(gca,'TickLabelInterpreter','none');
     end
 
-    xlabel('Scale factor');     % or 'Frequency (Hz)'
+    xlabel('Time (ms)');     % or 'Frequency (Hz)' % 'Scale factor'
     ylabel(line_label);
     title(sprintf('Cluster %d - %s', iClust, ch));
     set(gca,'FontSize',14,'LineWidth',1.2);
@@ -244,7 +244,8 @@ for iClust = 1:height(summary_tbl)
         set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
     end
 
-    title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
+    title(sprintf('Cluster %d (Time: %.0f ms)', iClust, f(fi)));
+    % title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
     set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
 
 end

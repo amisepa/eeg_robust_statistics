@@ -24,8 +24,8 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %                       (default = 0.5)
 %   polarity_split   - If true, makes polarity exclusive per x bin
 %                       (default = true)
-%   es_metric        - Effect size (ES) metric to compute: 'cohen-d' (default),
-%                       'hedge-g', 'eta2', 'r'
+%   es_metric        - Effect size (ES) metric to compute: 'd' (cohen's d; default),
+%                       'g (hedge g)', 'eta2', 'r'
 %
 % OUTPUTS:
 %   mask             - Cell array of logical masks for each merged cluster
@@ -52,10 +52,9 @@ if ~exist('polarity_split','var') || isempty(polarity_split)
     polarity_split = false;
 end
 
-% ES metric to compute ('cohen-d', 'hedges-g', 'eta2', 'r')
 % Default ES metric and options
 if ~exist('es_metric','var') || isempty(es_metric)
-    es_metric = 'cohen-d';   % 'cohen-d', 'hedges-g', 'eta2', 'r'
+    es_metric = 'd';   % 'd', 'g', 'eta2', 'r'
 end
 if ~exist('es_opts','var') || isempty(es_opts)
     es_opts = struct();      % optional: es_opts.df, es_opts.welch, es_opts.s1, es_opts.s2
@@ -338,10 +337,10 @@ end
 %% Helper
 
 function [es, name, df_out] = effect_size_from_t(t, grp, n, metric, es_opts)
-% metric: 'cohen-d' | 'hedges-g' | 'eta2' | 'r'
+% metric: 'd' | 'g' | 'eta2' | 'r'
 % When to use:
-%   'cohen-d'   use for paired dz or independent d under equal variances
-%   'hedges-g'  small-sample bias corrected d (paired or independent)
+%   'd'   use for paired dz or independent d under equal variances
+%   'g'  small-sample bias corrected d (paired or independent)
 %   'eta2'      variance-explained for a single t test
 %   'r'         correlation effect size for a single t test
 if nargin < 5 || isempty(es_opts), es_opts = struct(); end
@@ -359,8 +358,8 @@ switch lower(grp)
         dz = t / sqrt(n1);               % Cohen dz from paired t
         J  = 1 - (3 / (4*df - 1));       % bias correction
         switch metric
-            case 'cohen-d', es = dz;         name = "d";
-            case 'hedges-g', es = dz * J;    name = "g";
+            case 'd', es = dz;        name = "d";
+            case 'g', es = dz * J;    name = "g";
             case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
             case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
             otherwise, error('Unknown es_metric: %s', metric);
@@ -385,8 +384,8 @@ switch lower(grp)
             if ~isempty(es_opts.df), df_w = es_opts.df; end
             J  = 1 - (3 / (4*df_w - 1));   % bias correction using Welch df
             switch metric
-                case 'cohen-d', es = d;           name = "d";
-                case 'hedges-g', es = d * J;      name = "g";
+                case 'd', es = d;      name = "d";
+                case 'g', es = d * J;  name = "g";
                 case 'eta2',     es = t^2 / (t^2 + df_w); name = "eta2";
                 case 'r',        eta = t^2 / (t^2 + df_w); es = sign(t)*sqrt(eta); name = "r";
                 otherwise, error('Unknown es_metric: %s', metric);
@@ -400,8 +399,8 @@ switch lower(grp)
             d  = t * sqrt(1/n1 + 1/n2);   % Cohen d from pooled t
             J  = 1 - (3 / (4*df - 1));
             switch metric
-                case 'cohen-d', es = d;           name = "d";
-                case 'hedges-g', es = d * J;      name = "g";
+                case 'd', es = d;           name = "d";
+                case 'g', es = d * J;      name = "g";
                 case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
                 case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
                 otherwise, error('Unknown es_metric: %s', metric);

@@ -11,9 +11,9 @@ function ERP_robust = compute_robust_erp(trials, method)
 %   trials - [nChan x nTime x nTrials] Single-subject trial data
 %   method - Weighting method:
 %            'mean'   - Standard arithmetic mean (no weighting)
-%            'huber'  - Huber M-estimator weights
-%            'tukey'  - Tukey bisquare weights (more aggressive)
-%            'median' - Median (ultimate robustness, but less efficient)
+%            'median' - Median (ultimate robustness, but lower statistical power)
+%            'huber'  - Huber M-estimator weights (default; good balance, 95% efficiency, moderate outlier protection)
+%            'tukey'  - Tukey bisquare weights (more aggressive, completely removes extreme outliers)
 %
 % OUTPUT:
 %   ERP_robust - [nChan x nTime] Robust averaged ERP

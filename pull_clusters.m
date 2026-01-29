@@ -337,12 +337,19 @@ end
 %% Helper
 
 function [es, name, df_out] = effect_size_from_t(t, grp, n, metric, es_opts)
-% metric: 'd' | 'g' | 'eta2' | 'r'
-% When to use:
-%   'd'   use for paired dz or independent d under equal variances
-%   'g'  small-sample bias corrected d (paired or independent)
-%   'eta2'      variance-explained for a single t test
-%   'r'         correlation effect size for a single t test
+% EFFECT_SIZE_FROM_T - Compute effect sizes from t-statistics
+%
+% FORMULAS:
+%   Paired (dpt):
+%     d_z = t / sqrt(n)          [Cohen's d_z for repeated measures]
+%     g_z = d_z * J              [Hedges' g_z with bias correction]
+%     
+%   Independent (idpt):
+%     d = t * sqrt(1/n1 + 1/n2)  [Cohen's d pooled]
+%     g = d * J                   [Hedges' g]
+%
+% NOTE: For paired designs, d_z = mean(diff) / sd(diff) = t / sqrt(n)
+
 if nargin < 5 || isempty(es_opts), es_opts = struct(); end
 if ~isfield(es_opts,'df'), es_opts.df = []; end
 if ~isfield(es_opts,'welch'), es_opts.welch = false; end
@@ -351,43 +358,63 @@ if ~isfield(es_opts,'s2'), es_opts.s2 = []; end
 metric = lower(metric);
 
 switch lower(grp)
-    case 'dpt'   % paired
+    case 'dpt'   % paired/dependent
         n1 = n{1};
         df = n1 - 1;
         if ~isempty(es_opts.df), df = es_opts.df; end
-        dz = t / sqrt(n1);               % Cohen dz from paired t
-        J  = 1 - (3 / (4*df - 1));       % bias correction
+        
+        % Cohen's d_z for repeated measures
+        dz = t / sqrt(n1);               % Equivalent to: mean(diff) / sd(diff)
+        
+        % Hedges' bias correction factor
+        J  = 1 - (3 / (4*df - 1));
+        
         switch metric
-            case 'd', es = dz;        name = "d";
-            case 'g', es = dz * J;    name = "g";
-            case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
-            case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
-            otherwise, error('Unknown es_metric: %s', metric);
+            case 'd'
+                es = dz;
+                name = "d_z";  % More specific name for within-subject
+            case 'g'
+                es = dz * J;
+                name = "g_z";  % More specific name for within-subject
+            case 'eta2'
+                es = t^2 / (t^2 + df);
+                name = "eta2";
+            case 'r'
+                eta = t^2 / (t^2 + df);
+                es = sign(t) * sqrt(eta);
+                name = "r";
+            otherwise
+                error('Unknown es_metric: %s', metric);
         end
         df_out = df;
 
-    case 'idpt'  % independent
+    case 'idpt'  % independent/between-subjects
         n1 = n{1}; n2 = n{2};
 
         if es_opts.welch
-            % Welch t path: need group SDs s1, s2 to back out the mean diff
+            % Welch t: need group SDs to back out pooled d
             assert(~isempty(es_opts.s1) && ~isempty(es_opts.s2), ...
                 'Welch conversion requires es_opts.s1 and es_opts.s2.');
             s1 = es_opts.s1; s2 = es_opts.s2;
-            % Back out mean difference from t
+            
+            % Back out mean difference
             mdiff = t * sqrt(s1^2/n1 + s2^2/n2);
-            % Pooled SD for standardizing d (Hedges suggested)
+            
+            % Pooled SD
             sp = sqrt(((n1-1)*s1^2 + (n2-1)*s2^2) / (n1 + n2 - 2));
             d  = mdiff / sp;
-            % Welch df for eta2 and r (or override)
+            
+            % Welch df
             df_w = welch_df(s1, s2, n1, n2);
             if ~isempty(es_opts.df), df_w = es_opts.df; end
-            J  = 1 - (3 / (4*df_w - 1));   % bias correction using Welch df
+            
+            J  = 1 - (3 / (4*df_w - 1));
+            
             switch metric
                 case 'd', es = d;      name = "d";
                 case 'g', es = d * J;  name = "g";
-                case 'eta2',     es = t^2 / (t^2 + df_w); name = "eta2";
-                case 'r',        eta = t^2 / (t^2 + df_w); es = sign(t)*sqrt(eta); name = "r";
+                case 'eta2', es = t^2 / (t^2 + df_w); name = "eta2";
+                case 'r',    eta = t^2 / (t^2 + df_w); es = sign(t)*sqrt(eta); name = "r";
                 otherwise, error('Unknown es_metric: %s', metric);
             end
             df_out = df_w;
@@ -396,13 +423,17 @@ switch lower(grp)
             % Equal-variance pooled t
             df = n1 + n2 - 2;
             if ~isempty(es_opts.df), df = es_opts.df; end
-            d  = t * sqrt(1/n1 + 1/n2);   % Cohen d from pooled t
+            
+            % Cohen's d for independent samples
+            d  = t * sqrt(1/n1 + 1/n2);
+            
             J  = 1 - (3 / (4*df - 1));
+            
             switch metric
                 case 'd', es = d;           name = "d";
-                case 'g', es = d * J;      name = "g";
-                case 'eta2',     es = t^2 / (t^2 + df); name = "eta2";
-                case 'r',        eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
+                case 'g', es = d * J;       name = "g";
+                case 'eta2', es = t^2 / (t^2 + df); name = "eta2";
+                case 'r',    eta = t^2 / (t^2 + df); es = sign(t)*sqrt(eta); name = "r";
                 otherwise, error('Unknown es_metric: %s', metric);
             end
             df_out = df;
@@ -412,7 +443,6 @@ switch lower(grp)
         error("grp must be 'dpt' or 'idpt'.")
 end
 end
-
 function dfw = welch_df(s1, s2, n1, n2)
 % Welch–Satterthwaite degrees of freedom
 v1 = s1^2 / n1; v2 = s2^2 / n2;

@@ -56,6 +56,7 @@ end
 if ~exist('es_metric','var') || isempty(es_metric)
     es_metric = 'd';   % 'd', 'g', 'eta2', 'r'
 end
+
 if ~exist('es_opts','var') || isempty(es_opts)
     es_opts = struct();      % optional: es_opts.df, es_opts.welch, es_opts.s1, es_opts.s2
 end
@@ -64,8 +65,8 @@ end
 % es_opts.s1,s2  group SDs (only needed to convert Welch t to d/g)
 
 
-% 3) Optional polarity exclusivity per x bin
-%    Enforce that at each column only one polarity can contribute to clusters
+% Optional polarity exclusivity per x bin
+%  Enforce that at each column only one polarity can contribute to clusters
 if polarity_split
     [~, idx_row] = max(abs(stats), [], 1);
     lin_idx = sub2ind(size(stats), idx_row, 1:numel(idx_row));
@@ -88,7 +89,7 @@ else
     label_img = bwlabel(mask, conn);
 end
 
-% 4) Extract initial cluster masks
+% Extract initial cluster masks
 n_cluster = max(label_img(:));
 mask_clusters = cell(1,0);
 for iClust = 1:n_cluster
@@ -105,7 +106,7 @@ if isempty(mask_clusters)
     return
 end
 
-% 5) Split clusters by internal gaps along x using sep_thresh
+% Split clusters by internal gaps along x using sep_thresh
 dx = median(diff(xaxis));
 min_gap_bins = max(1, round(sep_thresh / dx));
 new_masks = {};
@@ -153,7 +154,7 @@ for iClust = 1:numel(mask_clusters)
 end
 mask_clusters = new_masks;
 
-% 6) Prune clusters whose bandwidth is below sep_thresh
+% Prune clusters whose bandwidth is below sep_thresh
 min_width_bins = max(1, round(sep_thresh / dx));
 keep = true(1, numel(mask_clusters));
 for i = 1:numel(mask_clusters)
@@ -178,7 +179,7 @@ if isempty(mask_clusters)
     return
 end
 
-% 7) Compute bounds and peaks
+%  Compute bounds and peaks
 n_cluster = numel(mask_clusters);
 cluster_start = nan(1,n_cluster);
 cluster_end   = nan(1,n_cluster);
@@ -228,7 +229,8 @@ if merge_thresh > 0
     A = false(N,N);
     for i = 1:N-1
         for j = i+1:N
-            if clust_sign(i) ~= clust_sign(j), continue, end
+            % if clust_sign(i) ~= clust_sign(j), continue, end
+            if polarity_split && clust_sign(i) ~= clust_sign(j), continue, end
             a = clust_bounds(i,:); b = clust_bounds(j,:);
             if overlaps_or_adjacent(a,b) || contained(a,b)
                 A(i,j) = true; A(j,i) = true;
@@ -291,11 +293,11 @@ for i = 1:numel(merged_mask_clusters)
     [ES_full(i), ES_name(i), df_used(i)] = effect_size_from_t(t, grp, n, es_metric, es_opts);
 
     if strcmpi(datatype, 'frequency')
-        fprintf('Cluster %d: %g to %g Hz (%g channels). Peak: %s at %g Hz (t = %.3f; %s = %.3f)\n', ...
+        fprintf('Cluster %d: %g to %.0f Hz (%g channels). Peak: %s at %.0f Hz (t = %.2f; %s = %.2f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
             nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
     else
-        fprintf('Cluster %d: %g to %g ms (%g channels). Peak: %s at %g ms (t = %.3f; %s = %.3f)\n', ...
+        fprintf('Cluster %d: %.0f to %.0f ms (%g channels). Peak: %s at %.0f ms (t = %.2f; %s = %.2f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
             nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
     end
@@ -443,6 +445,7 @@ switch lower(grp)
         error("grp must be 'dpt' or 'idpt'.")
 end
 end
+
 function dfw = welch_df(s1, s2, n1, n2)
 % Welch–Satterthwaite degrees of freedom
 v1 = s1^2 / n1; v2 = s2^2 / n2;

@@ -25,13 +25,15 @@
 %   Tukey's Biweight: Reduces the influence of outliers more aggressively by setting large residuals to zero weight.
 % 
 % EXAMPLE: 
-%   [betas,rsquared,fstat,pvals] = run_glm(data,times,tlims,events,optimization,weight_method)
+%   [betas,rsquared,fstat,pvals] = run_glm_limo_style(data, times, tlims, events, optimization, weight_method)
+% 
+%   [betas,rsquared,fstat,pvals] = run_glm_limo_style(EEG.data, EEG.times, [-50 800], EEG.event, 'WLS', 'Hubert')
 % 
 % Copyright (C) - Cedric Cannard, May 2024
 
 function [betas,rsquared,fstat,pvals,times] = run_glm_limo_style(data,times,tlims,events,optimization,weight_method)
 
-if strcmp(optimization,'OLS') || strcmp(optimization,'IRLS')
+if strcmpi(optimization,'OLS') || strcmp(optimization,'IRLS')
     weight_method = [];
 end
 
@@ -41,13 +43,13 @@ if ndims(data) == 2
 end
 
 % Convergence criteria for IRLS optimization
-if strcmp(optimization,'IRLS')
+if strcmpi(optimization,'IRLS')
     max_iter = 100;
     tol = 1e-6;
     k = 1.345; % Tuning parameter for Huber's function
 end
 
-if strcmp(optimization,'WLS')
+if strcmpi(optimization,'WLS')
     if isempty(weight_method) || strcmpi(weight_method,'PCP')
         weight_method = 1;          % PCP by default
     elseif strcmpi(weight_method,'hubert')
@@ -145,8 +147,7 @@ end
 data_reshaped = reshape(data, nChan*nFrames, nTrials)';
 
 % Run GLM
-switch optimization
-
+switch upper(optimization)
     case 'OLS'
 
         disp("Running GLM using OLS optimization...")
@@ -161,7 +162,8 @@ switch optimization
         % value (here 1e-5) to the diagonal elements of the design matrix
         % before computing the pseudoinverse. regularization parameter 1e-5
         % may need to be adjusted.
-        effective_rank = sum(eig(cov(double(XTX')))>1E-7);
+        % effective_rank = sum(eig(cov(double(XTX')))>1E-7);
+        effective_rank = rank(design_matrix);
         if effective_rank < size(XTX, 2)
             warning('Design matrix is rank deficient. Applying Tikhonov regularization.');
             XTX = XTX + 1e-5 * eye(size(XTX));
@@ -204,7 +206,8 @@ switch optimization
             % value (here 1e-5) to the diagonal elements of the design matrix
             % before computing the pseudoinverse. regularization parameter 1e-5
             % may need to be adjusted.
-            effective_rank = sum(eig(cov(double(XTWX')))>1E-7);
+            % effective_rank = sum(eig(cov(double(XTWX')))>1E-7);
+            effective_rank = rank(XTWX);   
             if effective_rank < size(XTWX, 2)
                 warning('Design matrix is rank deficient. Applying Tikhonov regularization.');
                 XTWX = XTWX + 1e-5 * eye(size(XTWX));
@@ -264,12 +267,12 @@ switch optimization
         % Tikhonov regularization or "ridge regression" (instead of pinv)
         % to handle potential numerical instability. We add a very small
         % value (here 1e-5) to the diagonal elements of the design matrix
-        % before computing the pseudoinverse. regularization parameter 1e-5
-        % may need to be adjusted.
-        effective_rank = sum(eig(cov(double(XTWX')))>1E-7);
+        % before computing the pseudoinverse. 
+        % effective_rank = sum(eig(cov(double(XTWX')))>1E-7);
+        effective_rank = rank(XTWX);
         if effective_rank < size(XTWX, 2)
             warning('Design matrix is rank deficient. Applying Tikhonov regularization.');
-            XTWX = XTWX + 1e-5 * eye(size(XTWX));
+            XTWX = XTWX + 1e-5 * eye(size(XTWX)); % regularization parameter 1e-5 may need to be adjusted.
         end
 
         % Compute betas, fitted values and residuals

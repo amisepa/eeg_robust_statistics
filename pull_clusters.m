@@ -8,7 +8,7 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %   structured cluster summary.
 %
 % USAGE:
-%   [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, datatype, grp, n, merge_gap_thresh)
+%   [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, datatype, grp, n, merge_thresh, sep_thresh, polarity_split, es_metric)
 %
 % INPUTS:
 %   mask             - Binary significance mask [channels x time/freq]
@@ -18,12 +18,12 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %   datatype         - 'frequency' or 'time'
 %   grp              - 'dpt' (within-group) or 'idpt' (between-group)
 %   n                - Cell array with subject counts: {n1} or {n1, n2}
-%   merge_thresh     - Maximum gap (in xaxis units) for merging clusters
-%                       (default = 0.5)
-%   sep_thresh       - Minimum bandwidth (in xaxis units) to keep a cluster
-%                       (default = 0.5)
-%   polarity_split   - If true, makes polarity exclusive per x bin
-%                       (default = true)
+%   merge_thresh       - Minimum width (in bins/frames) to keep a cluster
+%                       (default = 2)
+%   sep_thresh     - Maximum gap (in bins/frames) for merging clusters
+%                       (default = 2)
+%   polarity_split   - If true, makes polarity exclusive per x bin to get
+%                       both positive and negative clusters as separate (default = false)
 %   es_metric        - Effect size (ES) metric to compute: 'd' (cohen's d; default),
 %                       'g (hedge g)', 'eta2', 'r'
 %
@@ -43,10 +43,10 @@ end
 
 % 2) Defaults for thresholds
 if ~exist('sep_thresh','var') || isempty(sep_thresh)
-    sep_thresh = .5;   % in xaxis units
+    sep_thresh = 1;   % in frames or freq bins
 end
 if ~exist('merge_thresh','var') || isempty(merge_thresh)
-    merge_thresh = .5; % in xaxis units
+    merge_thresh = 1; % in frames or freq bins
 end
 if ~exist('polarity_split','var') || isempty(polarity_split)
     polarity_split = false;
@@ -63,7 +63,9 @@ end
 % es_opts.df     numeric, overrides df used for eta2 and r, and J in Hedges
 % es_opts.welch  true for Welch t in independent groups
 % es_opts.s1,s2  group SDs (only needed to convert Welch t to d/g)
-
+if strcmpi(es_metric, 'r')
+    es_opts.df = n{:} - 2;  % or pass nPredictors as an argument
+end
 
 % Optional polarity exclusivity per x bin
 %  Enforce that at each column only one polarity can contribute to clusters
@@ -108,7 +110,8 @@ end
 
 % Split clusters by internal gaps along x using sep_thresh
 dx = median(diff(xaxis));
-min_gap_bins = max(1, round(sep_thresh / dx));
+% min_gap_bins = max(1, round(sep_thresh / dx));
+min_gap_bins   = max(1, round(sep_thresh));
 new_masks = {};
 for iClust = 1:numel(mask_clusters)
     m = mask_clusters{iClust};
@@ -155,7 +158,8 @@ end
 mask_clusters = new_masks;
 
 % Prune clusters whose bandwidth is below sep_thresh
-min_width_bins = max(1, round(sep_thresh / dx));
+% min_width_bins = max(1, round(sep_thresh / dx));
+min_width_bins = max(1, round(sep_thresh));
 keep = true(1, numel(mask_clusters));
 for i = 1:numel(mask_clusters)
     sigcols = any(mask_clusters{i}, 1);

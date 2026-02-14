@@ -22,20 +22,10 @@ if nargin < 4 || isempty(method), method = 'trimmed mean'; end
 if nargin < 5 || isempty(dpt), error("Specify 'dpt' or 'idpt'"); end
 trim = 0.20;
 
-% Validate dimensions and safely promote 2D to 3D
-if ndims(data1) == 2 && ndims(data2) == 2
-    % Interpret as [nChan x nSub]  ->  [nChan x 1 x nSub]
-    [nChan1, nSub1] = size(data1);
-    [nChan2, nSub2] = size(data2);
-    if nChan1 ~= nChan2
-        error('data1 and data2 must have the same number of channels.')
-    end
-    data1 = reshape(data1, nChan1, 1, nSub1);
-    data2 = reshape(data2, nChan2, 1, nSub2);
-elseif ndims(data1) == 3 && ndims(data2) == 3
-    % ok as is
-else
-    error('Inputs must be 2D [nChan x nSub] or 3D [nChan x nTimes x nSub].')
+% if one channel and squeezed, add an extra channel dimension to be compatible
+if ndims(data1) == 2 % if one channel and squeezed, add an extra channel dimension to be compatible
+    data1 = reshape(data1, 1, size(data1, 1), size(data1, 2));
+    data2 = reshape(data2, 1, size(data2, 1), size(data2, 2));
 end
 
 [nChan, nTimes, nSub] = size(data1);

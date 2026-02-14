@@ -37,9 +37,9 @@ end
 if nargin < 5 || isempty(dpt)
     error("Variables not defined. Please define if data area paired or not to select adequate statistical test. ")
 end
-if ndims(data1) == 2 % Add an extra dimension if needed 
-    data1 = reshape(data1, size(data1, 1), 1, size(data1, 2));
-    data2 = reshape(data2, size(data2, 1), 1, size(data2, 2));
+if ndims(data1) == 2 % if one channel and squeezed, add an extra channel dimension to be compatible
+    data1 = reshape(data1, 1, size(data1, 1), size(data1, 2));
+    data2 = reshape(data2, 1, size(data2, 1), size(data2, 2));
 end
 
 % Data sizes

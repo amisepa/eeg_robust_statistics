@@ -204,9 +204,13 @@ for iClust = 1:height(summary_tbl)
     topo_mask = false(nChan,1);
     if iClust <= numel(mask) && ~isempty(mask{iClust})
         mc = mask{iClust};
-        if size(mc,2) == nFreq, topo_mask = mc(:, fi); end
+        if size(mc,2) == nFreq
+            % topo_mask = mc(:, fi);  % topo mask is extracted at only the peak time bin
+            topo_mask = any(mc, 2);   % collapse across time
+        end
     end
-
+    
+    % 3D BRAIN PLOT (SOURCE DATA)
     if strcmpi(dataType,'source')
         load cm17.mat
         load cortex; cortex = cortex_highres;
@@ -224,6 +228,8 @@ for iClust = 1:height(summary_tbl)
             allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [tmin max(mean(tvals,2,'omitnan'))], cm17a, 't-values', []);
         end
         hs.topo{iClust} = gcf;
+    
+    % SCALP TOPOGRAPHY
     else
         load("colormap_bwr.mat"); dmap(1,:) = [.9 .9 .9]; % NaNs to gray
 
@@ -234,14 +240,34 @@ for iClust = 1:height(summary_tbl)
         end
 
         hs.topo{iClust} = figure('Color','w');
-        try
+        % try
             topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
-                     'verbose','off','colormap', dmap, 'whitebk','on');
-        catch
-            topoplot(tvals(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
-        end
+                     'verbose','off','colormap', dmap, 'whitebk','on', ...
+                     'gridscale', 300);
+
+            % topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
+            %     'verbose','off', 'colormap', dmap, 'whitebk','on', ...
+            %     'gridscale', 300, 'interplimits', 'head','plotrad',0.5);
+
+            % % After your topoplot call, add this:
+            % h = findobj(gca, 'Type', 'surface');
+            % if isempty(h), h = findobj(gca, 'Type', 'image'); end
+            % if ~isempty(h)
+            %     cd = get(h(1), 'CData');
+            %     nanmask = isnan(cd);
+            %     if any(nanmask(:))
+            %         cd = regionfill(cd, nanmask);
+            %         set(h(1), 'CData', cd);
+            %     end
+            % end
+
+
+        % catch
+            % topoplot(tvals(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
+        % end
         c = colorbar; ylabel(c,'t-values','FontWeight','bold','FontSize',11)
         set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
+        set(gcf, 'Color', 'white')
     end
 
     title(sprintf('Cluster %d (Time: %.0f ms)', iClust, f(fi)));

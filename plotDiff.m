@@ -135,30 +135,35 @@ hold on
 p1 = plot(xAxis,data1_mean,'LineWidth',2,'Color', color1);
 patch([xAxis fliplr(xAxis)], [data1_CI(1,:) fliplr(data1_CI(2,:))], ...
     color1,'FaceAlpha',.3,'EdgeColor',color1,'EdgeAlpha',.9);
-set(gca,'FontSize',11,'layer','top'); 
 
 % Plot variable 2 (mean + CI)
 p2 = plot(xAxis,data2_mean,'LineWidth',2,'Color', color2);
 patch([xAxis fliplr(xAxis)], [data2_CI(1,:) fliplr(data2_CI(2,:))], ...
     color2,'FaceAlpha',.3,'EdgeColor',color2,'EdgeAlpha',.9);
-set(gca,'FontSize',12,'layer','top'); 
-grid off; axis tight; hold on; box on
-ylabel('Power (db)')
+
+set(gca,'FontSize',12,'layer','top');  grid off; axis tight; box on
+ylims = ylim;
+plot([0 0], [ylims(1) ylims(2)],'k--','LineWidth',.5) % Add dash line to mark time 0
+
+% ylabel('Power (db)')
+ylabel('Amplitude (μV)')
 
 % Plot difference (mean + CI)
-subplot(2,1,2)
+subplot(2,1,2); hold on
 plot(xAxis, data3_mean,'LineWidth',2,'Color', color3);
 patch([xAxis fliplr(xAxis)], [data3_CI(1,:) fliplr(data3_CI(2,:))], ...
     color3,'FaceAlpha',.3,'EdgeColor',color3,'EdgeAlpha',0.9);
-grid off; axis tight; box on
 
 % Add dash line to mark the null hypothesis
-hold on; plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',1)
-ylabel('Difference','FontSize',11,'FontWeight','bold')
+plot([xAxis(1) xAxis(end)], [0 0],'k--','LineWidth',.5)
+ylims = ylim;
+plot([0 0], [ylims(1) ylims(2)],'k--','LineWidth',.5) % Add dash line to mark time 0
+
+ylabel('Difference (μV)','FontSize',11,'FontWeight','bold')
 % xlabel("Frequency (Hz)",'FontSize',11,'FontWeight','bold')
 xlabel("Time (ms)",'FontSize',11,'FontWeight','bold')
-ylims = ylim;
-plot([0 0], [ylims(1) ylims(2)],'k--','LineWidth',1) % Add dash line to mark time 0
+
+grid off; axis tight; box on
 
 % Title with CT parameters
 if n1 ~= n2

@@ -99,7 +99,9 @@ method       = upper(p.Results.Method);
 weightType   = upper(p.Results.WeightType);
 show_prog    = p.Results.Progress;
 use_parallel = p.Results.Parallel;
-covariate    = p.Results.Covariate(:);
+% covariate    = p.Results.Covariate(:);
+covariate    = p.Results.Covariate;
+if isvector(covariate), covariate = covariate(:); end   % column-ize only if vector
 groupSplit   = lower(p.Results.GroupSplit);
 groupLabels  = p.Results.GroupLabels(:);
 
@@ -127,7 +129,12 @@ trials_per_sub = cellfun(@length, sub_rows);
 
 % ============ BUILD LEVEL 2 DESIGN MATRIX ============
 if ~isempty(covariate)
-    assert(length(covariate) == nSub, 'Covariate must have nSub elements.');
+    % assert(length(covariate) == nSub, 'Covariate must have nSub elements.');
+    assert(size(covariate, 1) == nSub, 'Covariate must have nSub rows. Got %d rows for %d subjects.', size(covariate,1), nSub);
+
+    if size(covariate, 2) > 1 && ~strcmpi(groupSplit, 'none')
+        error('GroupSplit only supported for single covariates. Got %d columns.', size(covariate,2));
+    end
     
     switch groupSplit
         case 'median'
@@ -150,11 +157,20 @@ if ~isempty(covariate)
             X2 = [ones(nSub,1), grp - mean(grp)];
             cov_label = 'Group (custom)';
             
-        otherwise  % 'none' — continuous covariate
-            % Z-score covariate for interpretability
-            cov_z = (covariate - mean(covariate)) / std(covariate);
-            X2 = [ones(nSub,1), cov_z];
-            cov_label = 'Covariate (z-scored)';
+        % otherwise  % 'none' — continuous covariate
+        %     % Z-score covariate for interpretability
+        %     cov_z = (covariate - mean(covariate)) / std(covariate);
+        %     X2 = [ones(nSub,1), cov_z];
+        %     cov_label = 'Covariate (z-scored)';
+        otherwise  % 'none' — continuous covariate(s)
+            nCov = size(covariate, 2);
+            cov_z = (covariate - mean(covariate, 1)) ./ std(covariate, 0, 1);  % z-score each column
+            X2 = [ones(nSub, 1), cov_z];   % [nSub x (1 + nCov)]
+            if nCov == 1
+                cov_label = 'Covariate (z-scored)';
+            else
+                cov_label = sprintf('%d covariates (z-scored)', nCov);
+            end
     end
 else
     % No covariate: intercept-only → one-sample t-test

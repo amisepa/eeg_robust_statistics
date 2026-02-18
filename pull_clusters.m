@@ -18,10 +18,10 @@ function [mask, clust_summary] = pull_clusters(mask, stats, xaxis, chanlocs, dat
 %   datatype         - 'frequency' or 'time'
 %   grp              - 'dpt' (within-group) or 'idpt' (between-group)
 %   n                - Cell array with subject counts: {n1} or {n1, n2}
-%   merge_thresh       - Minimum width (in bins/frames) to keep a cluster
-%                       (default = 2)
-%   sep_thresh     - Maximum gap (in bins/frames) for merging clusters
-%                       (default = 2)
+%   merge_thresh     - Maximum gap in xaxis units (ms or Hz) for merging 
+%                       clusters (default = 0, no merging)
+%   sep_thresh       - Minimum width in bins/frames to keep a cluster
+%                       (default = 1)
 %   polarity_split   - If true, makes polarity exclusive per x bin to get
 %                       both positive and negative clusters as separate (default = false)
 %   es_metric        - Effect size (ES) metric to compute: 'd' (cohen's d; default),
@@ -46,7 +46,7 @@ if ~exist('sep_thresh','var') || isempty(sep_thresh)
     sep_thresh = 1;   % in frames or freq bins
 end
 if ~exist('merge_thresh','var') || isempty(merge_thresh)
-    merge_thresh = 1; % in frames or freq bins
+    merge_thresh = 0; % in xaxis units (ms or Hz); 0 = no merging
 end
 if ~exist('polarity_split','var') || isempty(polarity_split)
     polarity_split = false;
@@ -60,25 +60,21 @@ end
 if ~exist('es_opts','var') || isempty(es_opts)
     es_opts = struct();      % optional: es_opts.df, es_opts.welch, es_opts.s1, es_opts.s2
 end
-% es_opts.df     numeric, overrides df used for eta2 and r, and J in Hedges
-% es_opts.welch  true for Welch t in independent groups
-% es_opts.s1,s2  group SDs (only needed to convert Welch t to d/g)
 if strcmpi(es_metric, 'r')
-    es_opts.df = n{:} - 2;  % or pass nPredictors as an argument
+    es_opts.df = n{:} - 2;
 end
 
 % Optional polarity exclusivity per x bin
-%  Enforce that at each column only one polarity can contribute to clusters
 if polarity_split
     [~, idx_row] = max(abs(stats), [], 1);
     lin_idx = sub2ind(size(stats), idx_row, 1:numel(idx_row));
-    sign_at_absmax = sign(stats(lin_idx));         % 1 x F in {-1,0,+1}
+    sign_at_absmax = sign(stats(lin_idx));
     sgn_pos = repmat(sign_at_absmax > 0, size(mask,1), 1);
     sgn_neg = repmat(sign_at_absmax < 0, size(mask,1), 1);
     pos_mask_all = mask & sgn_pos;
     neg_mask_all = mask & sgn_neg;
 
-    conn = 4;                                      % 2-D connectivity
+    conn = 4;
     pos_labels = bwlabel(pos_mask_all, conn);
     neg_labels = bwlabel(neg_mask_all, conn);
     if max(pos_labels(:)) > 0
@@ -86,7 +82,6 @@ if polarity_split
     end
     label_img = pos_labels + neg_labels;
 else
-    % Standard labeling without polarity separation
     conn = 4;
     label_img = bwlabel(mask, conn);
 end
@@ -108,18 +103,35 @@ if isempty(mask_clusters)
     return
 end
 
+% Consolidate clusters that overlap in time (bwlabel may fragment across
+% non-adjacent channel indices that are part of the same temporal event)
+changed = true;
+while changed
+    changed = false;
+    for ii = 1:numel(mask_clusters)-1
+        if ~any(mask_clusters{ii}(:)), continue, end
+        sig_i = any(mask_clusters{ii}, 1);   % 1 x T
+        for jj = ii+1:numel(mask_clusters)
+            if ~any(mask_clusters{jj}(:)), continue, end
+            sig_j = any(mask_clusters{jj}, 1);
+            if any(sig_i & sig_j)  % temporal overlap
+                mask_clusters{ii} = mask_clusters{ii} | mask_clusters{jj};
+                mask_clusters{jj} = false(size(mask_clusters{jj}));
+                sig_i = any(mask_clusters{ii}, 1);
+                changed = true;
+            end
+        end
+    end
+end
+mask_clusters = mask_clusters(cellfun(@(m) any(m(:)), mask_clusters));
+
 % Split clusters by internal gaps along x using sep_thresh
-dx = median(diff(xaxis));
-% min_gap_bins = max(1, round(sep_thresh / dx));
-min_gap_bins   = max(1, round(sep_thresh));
+min_gap_bins = max(1, round(sep_thresh));
 new_masks = {};
 for iClust = 1:numel(mask_clusters)
     m = mask_clusters{iClust};
+    sig = any(m, 1);
 
-    % 1D signature across columns
-    sig = any(m, 1);                      % 1 x F logical
-
-    % Fill gaps up to sep_thresh - 1 columns if imclose exists
     if exist('imclose','file') == 2
         se_len = max(0, min_gap_bins-1);
         if se_len > 0
@@ -131,7 +143,6 @@ for iClust = 1:numel(mask_clusters)
         sig_filled = sig;
     end
 
-    % Label runs
     if any(sig_filled)
         [L, numRuns] = bwlabel(sig_filled);
     else
@@ -139,7 +150,6 @@ for iClust = 1:numel(mask_clusters)
         numRuns = 0;
     end
 
-    % Create submasks per run
     if numRuns <= 1
         new_masks{end+1} = m; %#ok<AGROW>
     else
@@ -157,8 +167,7 @@ for iClust = 1:numel(mask_clusters)
 end
 mask_clusters = new_masks;
 
-% Prune clusters whose bandwidth is below sep_thresh
-% min_width_bins = max(1, round(sep_thresh / dx));
+% Prune clusters whose width is below sep_thresh
 min_width_bins = max(1, round(sep_thresh));
 keep = true(1, numel(mask_clusters));
 for i = 1:numel(mask_clusters)
@@ -183,7 +192,7 @@ if isempty(mask_clusters)
     return
 end
 
-%  Compute bounds and peaks
+% Compute bounds and peaks
 n_cluster = numel(mask_clusters);
 cluster_start = nan(1,n_cluster);
 cluster_end   = nan(1,n_cluster);
@@ -200,7 +209,6 @@ for iClust = 1:n_cluster
     cluster_start(iClust) = find(sigframes, 1, 'first');
     cluster_end(iClust)   = find(sigframes, 1, 'last');
 
-    % Peak with sign preserved
     [mx_pos, idx_pos] = max(tmp(:), [], 'omitnan');
     [mx_neg, ~]       = min(tmp(:), [], 'omitnan');
     if abs(mx_neg) > abs(mx_pos)
@@ -222,66 +230,76 @@ clust_maxval    = clust_maxval(idx);
 mask_clusters   = mask_clusters(idx);
 clust_bounds    = [cluster_start; cluster_end]';
 
-% 8) Merge clusters by gap and polarity
-gap_bins = max(0, round(merge_thresh / dx));
+% ---- Merge clusters by gap in xaxis units (sequential greedy) ----
+% Merge if:
+%   (1) gap <= merge_thresh, AND
+%   (2) same peak channel, AND
+%   (3) the t-values at the peak channel do NOT cross zero in the gap
 if merge_thresh > 0
-    N = size(clust_bounds, 1);
     clust_sign = sign(clust_maxval);
-    overlaps_or_adjacent = @(a,b) (b(1) <= a(2)+gap_bins) && (b(2) >= a(1)-gap_bins);
-    contained = @(a,b) (b(1) >= a(1) && b(2) <= a(2)) || (a(1) >= b(1) && a(2) <= b(2));
+    i = 1;
+    while i < size(clust_bounds, 1)
+        % Compute gap in xaxis units between end of cluster i and start of i+1
+        gap_xunits = xaxis(clust_bounds(i+1, 1)) - xaxis(clust_bounds(i, 2));
 
-    A = false(N,N);
-    for i = 1:N-1
-        for j = i+1:N
-            % if clust_sign(i) ~= clust_sign(j), continue, end
-            if polarity_split && clust_sign(i) ~= clust_sign(j), continue, end
-            a = clust_bounds(i,:); b = clust_bounds(j,:);
-            if overlaps_or_adjacent(a,b) || contained(a,b)
-                A(i,j) = true; A(j,i) = true;
+        if gap_xunits <= merge_thresh && clust_maxchan(i) == clust_maxchan(i+1)
+            % Check for zero-crossing in the gap at the shared peak channel
+            gap_cols = (clust_bounds(i, 2)+1):(clust_bounds(i+1, 1)-1);
+
+            do_merge = true;
+            if ~isempty(gap_cols)
+                ch = clust_maxchan(i);
+                gap_vals = stats(ch, gap_cols);
+                % Veto if t-values cross zero relative to cluster polarity
+                if clust_sign(i) ~= 0 && any(sign(gap_vals) == -clust_sign(i))
+                    do_merge = false;
+                end
             end
+
+            if do_merge
+                % Merge cluster i+1 into i
+                clust_bounds(i, 2) = max(clust_bounds(i, 2), clust_bounds(i+1, 2));
+                mask_clusters{i} = mask_clusters{i} | mask_clusters{i+1};
+
+                % Fill the gap columns in the mask for the shared channels
+                if ~isempty(gap_cols)
+                    shared_chans = any(mask_clusters{i}, 2);
+                    mask_clusters{i}(shared_chans, gap_cols) = true;
+                end
+
+                % Update peak to the one with larger absolute t
+                [~, pick] = max(abs([clust_maxval(i), clust_maxval(i+1)]));
+                if pick == 2
+                    clust_maxval(i)  = clust_maxval(i+1);
+                    clust_maxchan(i) = clust_maxchan(i+1);
+                    clust_maxfreq(i) = clust_maxfreq(i+1);
+                end
+                clust_sign(i) = sign(clust_maxval(i));
+
+                % Remove cluster i+1
+                clust_bounds(i+1, :)  = [];
+                mask_clusters(i+1)    = [];
+                clust_maxval(i+1)     = [];
+                clust_maxchan(i+1)    = [];
+                clust_maxfreq(i+1)    = [];
+                clust_sign(i+1)       = [];
+            else
+                i = i + 1;
+            end
+        else
+            i = i + 1;
         end
     end
-
-    if any(A(:))
-        G = graph(A);
-        comp = conncomp(G);
-    else
-        comp = 1:N;
-    end
-
-    K = max(comp);
-    merged_mask_clusters = cell(1,K);
-    merged_bounds  = nan(K,2);
-    merged_maxval  = nan(1,K);
-    merged_maxchan = nan(1,K);
-    merged_maxfreq = nan(1,K);
-
-    for k = 1:K
-        idk = find(comp == k);
-        m = false(size(mask_clusters{1}));
-        for t = idk(:)'
-            m = m | mask_clusters{t};
-        end
-        merged_mask_clusters{k} = m;
-
-        merged_bounds(k,1) = min(clust_bounds(idk,1));
-        merged_bounds(k,2) = max(clust_bounds(idk,2));
-
-        [~, ii] = max(abs(clust_maxval(idk)));
-        pick = idk(ii);
-        merged_maxval(k)  = clust_maxval(pick);
-        merged_maxchan(k) = clust_maxchan(pick);
-        merged_maxfreq(k) = clust_maxfreq(pick);
-    end
-else
-    merged_mask_clusters = mask_clusters;
-    merged_bounds        = clust_bounds;
-    merged_maxval        = clust_maxval;
-    merged_maxchan       = clust_maxchan;
-    merged_maxfreq       = clust_maxfreq;
 end
 
-% 9) Report and summarize
+% Assign final merged variables
+merged_mask_clusters = mask_clusters;
+merged_bounds        = clust_bounds;
+merged_maxval        = clust_maxval;
+merged_maxchan       = clust_maxchan;
+merged_maxfreq       = clust_maxfreq;
+
+% Report and summarize
 if merge_thresh > 0, mode_str = 'Merged'; else, mode_str = 'No merge'; end
 fprintf('\nCluster Summary (%s mode):\n', mode_str);
 
@@ -307,7 +325,7 @@ for i = 1:numel(merged_mask_clusters)
     end
 end
 
-% 10) Summary table
+% Summary table
 nMerged = numel(merged_mask_clusters);
 clust_summary = table;
 clust_summary.Cluster          = (1:nMerged).';
@@ -315,11 +333,9 @@ clust_summary.Start            = xaxis(merged_bounds(:,1)).';
 clust_summary.End              = xaxis(merged_bounds(:,2)).';
 clust_summary.Peak             = xaxis(merged_maxfreq).';
 
-% store full precision and rounded t
 clust_summary.Tvalue_full      = merged_maxval(:);
 clust_summary.Tvalue           = round(merged_maxval(:), 3);
 
-% effect sizes
 clust_summary.ES_full          = ES_full(:);
 clust_summary.ES               = round(ES_full(:), 3);
 clust_summary.ES_metric        = repmat(string(es_metric), nMerged, 1);
@@ -369,19 +385,16 @@ switch lower(grp)
         df = n1 - 1;
         if ~isempty(es_opts.df), df = es_opts.df; end
         
-        % Cohen's d_z for repeated measures
-        dz = t / sqrt(n1);               % Equivalent to: mean(diff) / sd(diff)
-        
-        % Hedges' bias correction factor
+        dz = t / sqrt(n1);
         J  = 1 - (3 / (4*df - 1));
         
         switch metric
             case 'd'
                 es = dz;
-                name = "d_z";  % More specific name for within-subject
+                name = "d_z";
             case 'g'
                 es = dz * J;
-                name = "g_z";  % More specific name for within-subject
+                name = "g_z";
             case 'eta2'
                 es = t^2 / (t^2 + df);
                 name = "eta2";
@@ -398,22 +411,14 @@ switch lower(grp)
         n1 = n{1}; n2 = n{2};
 
         if es_opts.welch
-            % Welch t: need group SDs to back out pooled d
             assert(~isempty(es_opts.s1) && ~isempty(es_opts.s2), ...
                 'Welch conversion requires es_opts.s1 and es_opts.s2.');
             s1 = es_opts.s1; s2 = es_opts.s2;
-            
-            % Back out mean difference
             mdiff = t * sqrt(s1^2/n1 + s2^2/n2);
-            
-            % Pooled SD
             sp = sqrt(((n1-1)*s1^2 + (n2-1)*s2^2) / (n1 + n2 - 2));
             d  = mdiff / sp;
-            
-            % Welch df
             df_w = welch_df(s1, s2, n1, n2);
             if ~isempty(es_opts.df), df_w = es_opts.df; end
-            
             J  = 1 - (3 / (4*df_w - 1));
             
             switch metric
@@ -426,13 +431,9 @@ switch lower(grp)
             df_out = df_w;
 
         else
-            % Equal-variance pooled t
             df = n1 + n2 - 2;
             if ~isempty(es_opts.df), df = es_opts.df; end
-            
-            % Cohen's d for independent samples
             d  = t * sqrt(1/n1 + 1/n2);
-            
             J  = 1 - (3 / (4*df - 1));
             
             switch metric
@@ -451,7 +452,6 @@ end
 end
 
 function dfw = welch_df(s1, s2, n1, n2)
-% Welch–Satterthwaite degrees of freedom
 v1 = s1^2 / n1; v2 = s2^2 / n2;
 dfw = (v1 + v2)^2 / ( (v1^2 / (n1 - 1)) + (v2^2 / (n2 - 1)) );
 end

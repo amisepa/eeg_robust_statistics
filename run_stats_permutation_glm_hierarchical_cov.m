@@ -135,21 +135,29 @@ if ~isempty(covariate)
     if size(covariate, 2) > 1 && ~strcmpi(groupSplit, 'none')
         error('GroupSplit only supported for single covariates. Got %d columns.', size(covariate,2));
     end
-    
+
     switch groupSplit
         case 'median'
-            med_val = median(covariate);
-            grp = double(covariate > med_val);
-            % Handle ties at median: assign to lower group
-            grp(covariate == med_val) = 0;
-            if show_prog
-                fprintf('Median split at %.2f: Group 0 (n=%d), Group 1 (n=%d)\n', ...
+            unique_vals = unique(covariate);
+            if numel(unique_vals) == 2
+                % Binary covariate (e.g., sex): use directly, no median split needed
+                grp = double(covariate == max(unique_vals));
+                if show_prog
+                    fprintf('Binary covariate detected — skipping median split.\n');
+                    fprintf('Group 0 (n=%d), Group 1 (n=%d)\n', sum(grp==0), sum(grp==1));
+                end
+            else
+                med_val = median(covariate);
+                grp = double(covariate > med_val);
+                grp(covariate == med_val) = 0;  % ties → lower group
+                if show_prog
+                    fprintf('Median split at %.2f: Group 0 (n=%d), Group 1 (n=%d)\n', ...
                         med_val, sum(grp==0), sum(grp==1));
+                end
             end
-            % Center the binary variable
             X2 = [ones(nSub,1), grp - mean(grp)];
             cov_label = 'Group (median split)';
-            
+    
         case 'custom'
             assert(~isempty(groupLabels) && length(groupLabels)==nSub, ...
                    'GroupLabels must have nSub elements for custom split.');

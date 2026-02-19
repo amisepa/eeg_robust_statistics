@@ -37,7 +37,11 @@ if strcmpi(plot_type,'main') || strcmpi(plot_type,'all')
     title('Corrected Statistical Map','FontSize',16,'FontWeight','bold')
     set(gca,'CLim',[-max(abs(stats(:))) max(abs(stats(:)))])
     if ~isempty(chanlocs)
-        set(gca,'YTick',1:2:numel(chanlocs), 'YTickLabel',{chanlocs(1:2:end).labels})
+        if length(chanlocs)>30
+            set(gca,'YTick',1:2:numel(chanlocs), 'YTickLabel',{chanlocs(1:2:end).labels})
+        else
+            set(gca,'YTick',1:numel(chanlocs), 'YTickLabel',{chanlocs(1:2:end).labels})
+        end
     end
     if contains(data_type,'time')
         xlabel('Time (ms)')

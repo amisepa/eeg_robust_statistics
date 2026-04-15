@@ -20,11 +20,11 @@ end
 if ~isfield(params,'method')
     params.method = 'triangulation';  % 'triangulation' (default), 'distance', 'parcellation'
 end
-if strcmpi(params.method,'distance')
+if strcmpi(params.method,'distance') &&  ~isfield(params,'max_dist')
     params.max_dist = 40;   % maximum distance (default = 40 mm)
 end
 if strcmpi(params.method,'triangulation')
-    params.compress = true;  % only for 'triangulation' method, add extra edges by compressing on x- and y- direction (defualt = true)
+    params.compress = true;  % only for 'triangulation' method, add extra edges by compressing on x- and y- direction (default = true)
 end
 if ~isfield(params,'vis')
     params.vis = false;
@@ -100,7 +100,7 @@ if strcmpi(params.method,'triangulation')
 
 elseif strcmpi(params.method,'distance')
 
-    % if not set, detect smart default for the distance from channel positions
+       % if not set, detect smart default for the distance from channel positions
         keeprow = true(size(chanpos,1),1);
         for l = 1:size(chanpos,2)
             keeprow = keeprow & isfinite(chanpos(:,l));
@@ -141,7 +141,7 @@ elseif strcmpi(params.method,'distance')
             case {'T/cm' 'fT/m'}
                 scalingfactor = 10^17; % 10^15 divided by 10^-2
         end
-    neighbourdist = 40*scalingfactor;  % default = 40 mm
+    neighbourdist = params.max_dist * scalingfactor;  % default = 40 mm
     fprintf('Using a distance threshold of %g mm (default = 40 mm). \n', neighbourdist);
 
     % Compute the neighbourhood geometry from the gradiometer/electrode positions

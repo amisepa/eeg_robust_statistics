@@ -74,7 +74,7 @@ function [betas_obs, tvals_obs, tvals_H0, w_obs, pvals_obs, pvals_H0, dz_map] = 
 %       1. Fit GLM: Y_s = X_s * beta_s + error_s
 %       2. Extract subject-specific condition effect: beta_s(condition)
 %       3. Optionally use robust estimation (IRLS/WLS)
-%   
+%
 %   Level 2 (Between-subject):
 %     1. Stack subject-specific effects: [beta_1, beta_2, ..., beta_S]
 %     2. Test if mean(beta_s) ≠ 0 using one-sample t-test
@@ -88,15 +88,15 @@ function [betas_obs, tvals_obs, tvals_H0, w_obs, pvals_obs, pvals_H0, dz_map] = 
 %   % Trial-level data: 30 trials/subject/condition, 14 subjects
 %   % crash_trials: [12 x 251 x 30 x 14]
 %   % nocrash_trials: [12 x 251 x 30 x 14]
-%   
+%
 %   crash_all = reshape(crash_trials, 12, 251, []);     % [12 x 251 x 420]
 %   nocrash_all = reshape(nocrash_trials, 12, 251, []); % [12 x 251 x 420]
 %   Y_all = cat(3, crash_all, nocrash_all);             % [12 x 251 x 840]
-%   
+%
 %   condition_col = [ones(420,1); zeros(420,1)];
 %   X = [ones(840,1), condition_col];
 %   subj_idx = [repmat((1:14)', 30, 1); repmat((1:14)', 30, 1)];
-%   
+%
 %   [betas, tvals, tvals_H0, w, pvals, pvals_H0] = ...
 %       run_stats_permutation_glm_hierarchical(Y_all, X, condition_col, 14, 1000, ...
 %       'Subjects', subj_idx, 'Method', 'IRLS');
@@ -179,7 +179,7 @@ end
 unique_subs = unique(subj_idx);
 if length(unique_subs) ~= nSub
     warning('Number of unique subjects (%d) differs from nSub (%d). Using unique count.', ...
-            length(unique_subs), nSub);
+        length(unique_subs), nSub);
     nSub = length(unique_subs);
 end
 
@@ -197,7 +197,7 @@ if show_prog
     fprintf('  Subjects: %d\n', nSub);
     fprintf('  Total trials: %d\n', nTrials);
     fprintf('  Trials/subject: min=%d, max=%d, mean=%.1f\n', ...
-            min(trials_per_sub), max(trials_per_sub), mean(trials_per_sub));
+        min(trials_per_sub), max(trials_per_sub), mean(trials_per_sub));
     fprintf('  Channels: %d, Time points: %d\n', nChan, nTime);
     level1_start = tic;
 end
@@ -210,26 +210,26 @@ for iSub = 1:nSub
     rows = sub_rows{iSub};
     Y_sub = Y(rows, :);
     X_sub = X(rows, :);
-    
+
     % Fit within-subject GLM
     switch method
         case 'OLS'
             B_sub = pinv(X_sub' * X_sub) * (X_sub' * Y_sub);
-            
+
         case 'IRLS'
             [B_sub, ~, w_sub] = irls_glm(X_sub, Y_sub);
             w_obs(rows) = w_sub;
-            
+
         case 'WLS'
             w_sub = compute_wls_weights(X_sub, Y_sub, weightType);
             W_sub = diag(w_sub);
             B_sub = pinv(X_sub' * W_sub * X_sub) * (X_sub' * W_sub * Y_sub);
             w_obs(rows) = w_sub;
     end
-    
+
     % Extract condition effect (assumes column 2)
     beta_subj_obs(iSub, :) = B_sub(2, :);
-    
+
     if show_prog && mod(iSub, max(1, ceil(nSub/10))) == 0
         fprintf('  Subject %d/%d (%.1f%%)\n', iSub, nSub, 100*iSub/nSub);
     end
@@ -268,7 +268,7 @@ end
 if show_prog
     fprintf('\n=== PERMUTATION TESTING ===\n');
     fprintf('Running %d permutations%s\n', nPerm, ...
-            ternary(use_parallel, ' (parallel)', ' (serial)'));
+        ternary(use_parallel, ' (parallel)', ' (serial)'));
     fprintf('  Each permutation fits %d subject-level GLMs\n', nSub);
     perm_start = tic;
 end
@@ -294,54 +294,54 @@ if use_parallel
             rows = sub_rows{s};
             cond_perm(rows) = cond_perm(rows(randperm(numel(rows))));
         end
-        
+
         % Update design matrix
         Xp = X;
         Xp(:, 2) = cond_perm;
-        
+
         % Level 1: Within-subject modeling (permuted)
         beta_subj_perm = zeros(nSub, nChan*nTime);
-        
+
         for iSub = 1:nSub
             rows = sub_rows{iSub};
             Y_sub = Y(rows, :);
             Xp_sub = Xp(rows, :);
-            
+
             % Initialize to avoid parfor warnings
             B_sub = [];
-            
+
             switch method
                 case 'OLS'
                     B_sub = pinv(Xp_sub' * Xp_sub) * (Xp_sub' * Y_sub);
-                    
+
                 case 'IRLS'
                     [B_sub, ~] = irls_glm(Xp_sub, Y_sub, w_obs(rows));
-                    
+
                 case 'WLS'
                     W_sub = diag(w_obs(rows));
                     B_sub = pinv(Xp_sub' * W_sub * Xp_sub) * (Xp_sub' * W_sub * Y_sub);
             end
-            
+
             beta_subj_perm(iSub, :) = B_sub(2, :);
         end
-        
+
         % Level 2: Group-level analysis (permuted)
         beta_subj_perm_3d = permute(reshape(beta_subj_perm', nChan, nTime, nSub), [3 1 2]);
         betas_perm_mean = squeeze(mean(beta_subj_perm_3d, 1));
         betas_perm_std = squeeze(std(beta_subj_perm_3d, 0, 1));
         betas_perm_se = betas_perm_std / sqrt(nSub);
-        
+
         tvals_H0(:, :, iPerm) = betas_perm_mean ./ betas_perm_se;
     end
-    
+
     % After parfor completes, report completion
     if show_prog
         perm_time = toc(perm_start);
         fprintf('\nAll permutations complete!\n');
         fprintf('  Total time: %.2f minutes (%.2f sec/perm)\n', ...
-                perm_time/60, perm_time/nPerm);
+            perm_time/60, perm_time/nPerm);
     end
-    
+
 else
     % Serial execution with waitbar
     for iPerm = 1:nPerm
@@ -351,59 +351,59 @@ else
             rows = sub_rows{s};
             cond_perm(rows) = cond_perm(rows(randperm(numel(rows))));
         end
-        
+
         % Update design matrix
         Xp = X;
         Xp(:, 2) = cond_perm;
-        
+
         % Level 1: Within-subject modeling (permuted)
         beta_subj_perm = zeros(nSub, nChan*nTime);
-        
+
         for iSub = 1:nSub
             rows = sub_rows{iSub};
             Y_sub = Y(rows, :);
             Xp_sub = Xp(rows, :);
-            
+
             B_sub = [];
-            
+
             switch method
                 case 'OLS'
                     B_sub = pinv(Xp_sub' * Xp_sub) * (Xp_sub' * Y_sub);
-                    
+
                 case 'IRLS'
                     [B_sub, ~] = irls_glm(Xp_sub, Y_sub, w_obs(rows));
-                    
+
                 case 'WLS'
                     W_sub = diag(w_obs(rows));
                     B_sub = pinv(Xp_sub' * W_sub * Xp_sub) * (Xp_sub' * W_sub * Y_sub);
             end
-            
+
             beta_subj_perm(iSub, :) = B_sub(2, :);
         end
-        
+
         % Level 2: Group-level analysis (permuted)
         beta_subj_perm_3d = permute(reshape(beta_subj_perm', nChan, nTime, nSub), [3 1 2]);
         betas_perm_mean = squeeze(mean(beta_subj_perm_3d, 1));
         betas_perm_std = squeeze(std(beta_subj_perm_3d, 0, 1));
         betas_perm_se = betas_perm_std / sqrt(nSub);
-        
+
         tvals_H0(:, :, iPerm) = betas_perm_mean ./ betas_perm_se;
-        
+
         % Update waitbar
         if show_prog && mod(iPerm, max(1, floor(nPerm/100))) == 0
             progress = iPerm / nPerm;
             elapsed = toc(perm_start);
             remaining = elapsed / progress - elapsed;
             waitbar(progress, h_wait, ...
-                    sprintf('Permutation %d/%d (%.1f%%) | Elapsed: %.1fm | Remaining: ~%.1fm', ...
-                            iPerm, nPerm, 100*progress, elapsed/60, remaining/60));
+                sprintf('Permutation %d/%d (%.1f%%) | Elapsed: %.1fm | Remaining: ~%.1fm', ...
+                iPerm, nPerm, 100*progress, elapsed/60, remaining/60));
         end
     end
-    
+
     if show_prog
         perm_time = toc(perm_start);
         fprintf('\nPermutation complete in %.2f minutes (%.2f sec/perm)\n', ...
-                perm_time/60, perm_time/nPerm);
+            perm_time/60, perm_time/nPerm);
     end
 end
 
@@ -411,52 +411,53 @@ end
 if show_prog
     fprintf('\n=== COMPUTING P-VALUES ===\n');
     pval_start = tic;
+    h_wait_pval = waitbar(0, 'Computing p-values: 0%', 'Name', 'P-value Progress');
+    cleanup_pval = onCleanup(@() close_if_valid(h_wait_pval));
 end
+
+tvals_obs = reshape(tvals_obs, nChan, nTime);
+tvals_H0  = reshape(tvals_H0,  nChan, nTime, nPerm);
 
 pvals_obs = zeros(nChan, nTime);
-pvals_H0 = zeros(nChan, nTime, nPerm);
+pvals_H0  = zeros(nChan, nTime, nPerm);
 
-% Progress tracking
-total_iterations = nChan * nTime;
-completed = 0;
-last_percent = 0;
-
-if show_prog
-    fprintf('Progress: 0%%');
-end
+total_iter = nChan * nTime;
+completed  = 0;
+last_pct   = 0;
 
 for iChan = 1:nChan
     for iTime = 1:nTime
-        t_obs = tvals_obs(iChan, iTime);
-        t_null = squeeze(tvals_H0(iChan, iTime, :));
-        
-        % Two-tailed: proportion of |t_null| >= |t_obs|
+        t_obs  = tvals_obs(iChan, iTime);
+        t_null = squeeze(tvals_H0(iChan, iTime, :));   % [nPerm x 1]
+
+        % Observed p-value
         pvals_obs(iChan, iTime) = mean(abs(t_null) >= abs(t_obs));
-        
-        % For H0 distribution: each perm vs all other perms
-        for iPerm = 1:nPerm
-            t_this = t_null(iPerm);
-            t_others = t_null([1:iPerm-1, iPerm+1:end]);
-            pvals_H0(iChan, iTime, iPerm) = mean(abs(t_others) >= abs(t_this));
-        end
-        
-        % Update progress
-        if show_prog
-            completed = completed + 1;
-            current_percent = floor(100 * completed / total_iterations);
-            if current_percent > last_percent && mod(current_percent, 10) == 0
-                fprintf('\b\b\b\b%3d%%', current_percent);
-                last_percent = current_percent;
-            end
+
+        % Vectorized H0 p-values: each perm vs all others
+        abs_null = abs(t_null);                          % [nPerm x 1]
+        total_ge = sum(abs_null >= abs_null', 1);        % [1 x nPerm]
+        pvals_H0(iChan, iTime, :) = (total_ge - 1) / (nPerm - 1);
+
+        % Progress
+        completed   = completed + 1;
+        current_pct = floor(100 * completed / total_iter);
+        if show_prog && current_pct > last_pct && mod(current_pct, 10) == 0
+            elapsed   = toc(pval_start);
+            remaining = elapsed / completed * (total_iter - completed);
+            fprintf('  P-values: %d%% | Elapsed: %.1fs | Remaining: ~%.1fs\n', ...
+                current_pct, elapsed, remaining);
+            waitbar(completed/total_iter, h_wait_pval, ...
+                sprintf('P-values: %d%% | ~%.1fs remaining', current_pct, remaining));
+            last_pct = current_pct;
         end
     end
 end
 
 if show_prog
-    fprintf('\b\b\b\b100%%\n');
     pval_time = toc(pval_start);
-    fprintf('P-value computation complete in %.2f seconds\n', pval_time);
-    
+    fprintf('P-values complete in %.2f seconds\n', pval_time);
+    close_if_valid(h_wait_pval)
+
     fprintf('\n=== SUMMARY ===\n');
     fprintf('Data dimensions: %d channels × %d time points\n', nChan, nTime);
     fprintf('Subjects: %d (avg %.1f trials/subject)\n', nSub, mean(trials_per_sub));
@@ -467,18 +468,26 @@ if show_prog
     fprintf('  Max: %.6f\n', max(pvals_obs(:)));
     fprintf('  Median: %.6f\n', median(pvals_obs(:)));
     fprintf('  < 0.05: %d voxels (%.2f%%)\n', ...
-            sum(pvals_obs(:) < 0.05), 100*mean(pvals_obs(:) < 0.05));
+        sum(pvals_obs(:) < 0.05), 100*mean(pvals_obs(:) < 0.05));
     fprintf('  < 0.01: %d voxels (%.2f%%)\n', ...
-            sum(pvals_obs(:) < 0.01), 100*mean(pvals_obs(:) < 0.01));
+        sum(pvals_obs(:) < 0.01), 100*mean(pvals_obs(:) < 0.01));
+
 end
 
 end
 
 % Helper function for conditional expression
 function out = ternary(condition, true_val, false_val)
-    if condition
-        out = true_val;
-    else
-        out = false_val;
+if condition
+    out = true_val;
+else
+    out = false_val;
+end
+end
+
+% helper
+function close_if_valid(h)
+    if ishandle(h)
+        close(h)
     end
 end

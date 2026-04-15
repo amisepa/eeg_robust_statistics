@@ -221,16 +221,18 @@ if show_prog
     fprintf('  Trials/subject: min=%d, max=%d, mean=%.1f\n', ...
             min(trials_per_sub), max(trials_per_sub), mean(trials_per_sub));
     level1_start = tic;
+    h_wait_l1 = waitbar(0, 'Level 1: Subject 1...', 'Name', 'Level 1 Progress');
+    cleanup_l1   = onCleanup(@() close_if_valid(h_wait_l1));
 end
 
 beta_subj_obs = zeros(nSub, nChan*nTime);
 w_obs = ones(nTrials, 1);
 
 for iSub = 1:nSub
-    rows = sub_rows{iSub};
+    rows  = sub_rows{iSub};
     Y_sub = Y(rows, :);
     X_sub = X(rows, :);
-    
+
     switch method
         case 'OLS'
             B_sub = pinv(X_sub' * X_sub) * (X_sub' * Y_sub);
@@ -243,17 +245,21 @@ for iSub = 1:nSub
             B_sub = pinv(X_sub' * W_sub * X_sub) * (X_sub' * W_sub * Y_sub);
             w_obs(rows) = w_sub;
     end
-    
-    % Extract condition effect (column 2 of design matrix)
+
     beta_subj_obs(iSub, :) = B_sub(2, :);
-    
-    if show_prog && mod(iSub, max(1, ceil(nSub/10))) == 0
-        fprintf('  Subject %d/%d\n', iSub, nSub);
+
+    if show_prog
+        elapsed = toc(level1_start);
+        remaining = elapsed / iSub * (nSub - iSub);
+        fprintf('  Subject %d/%d | Elapsed: %.1fs | Remaining: ~%.1fs\n', ...
+            iSub, nSub, elapsed, remaining);
+        waitbar(iSub/nSub, h_wait_l1, ...
+            sprintf('Level 1: Subject %d/%d | ~%.1fs remaining', iSub, nSub, remaining));
     end
 end
-
 if show_prog
     fprintf('Level 1 complete in %.2f seconds\n', toc(level1_start));
+    close(h_wait_l1)
 end
 
 % Reshape to [nSub x nChan x nTime]
@@ -299,6 +305,7 @@ end
 %   - Predictor 2+ (covariate): Shuffle covariate assignment (tests slope ≠ 0)
 % These are independent and both run within the same loop for efficiency.
 
+% ============ PERMUTATIONS ============
 if show_prog
     fprintf('\n=== PERMUTATION TESTING (Level 2) ===\n');
     if nP2 > 1
@@ -311,115 +318,135 @@ if show_prog
 end
 
 tvals_H0 = zeros(nChan, nTime, nP2, nPerm);
-
-% Pre-extract Level 2 data for permutation
-beta_subj_for_perm = beta_subj_obs;  % [nSub x nVox]
+beta_subj_for_perm = beta_subj_obs;
 
 if use_parallel
-    % Parallel permutations
+
+    if show_prog
+        fprintf('  Running %d permutations in parallel...\n', nPerm)
+        h_wait_perm = waitbar(0, sprintf('Running %d permutations...', nPerm), ...
+            'Name', 'Permutation Progress');
+        cleanup_perm = onCleanup(@() close_if_valid(h_wait_perm));
+        perm_start_par = tic;
+    end
+
     parfor iPerm = 1:nPerm
         tmp = zeros(nChan, nTime, nP2);
-        
-        % --- Intercept null: sign-flip ---
-        signs = 2*(randi(2, nSub, 1) - 1) - 1;  % random +1/-1
+
+        signs     = 2*(randi(2, nSub, 1) - 1) - 1;
         Y2_signed = bsxfun(@times, beta_subj_for_perm, signs);
-        B2_int = pinv(X2' * X2) * (X2' * Y2_signed);
-        Res2_int = Y2_signed - X2 * B2_int;
-        mse2_int = sum(Res2_int.^2, 1) / dof2;
-        SE2_int = sqrt(cov_XtX_inv * mse2_int);
-        T2_int = B2_int ./ SE2_int;
+        B2_int    = pinv(X2' * X2) * (X2' * Y2_signed);
+        Res2_int  = Y2_signed - X2 * B2_int;
+        mse2_int  = sum(Res2_int.^2, 1) / dof2;
+        SE2_int   = sqrt(cov_XtX_inv * mse2_int);
+        T2_int    = B2_int ./ SE2_int;
         tmp(:,:,1) = reshape(T2_int(1,:), nChan, nTime);
-        
-        % --- Covariate null: label-shuffle ---
+
         if nP2 > 1
-            perm_idx = randperm(nSub);
-            X2p = X2(perm_idx, :);
-            B2_cov = pinv(X2p' * X2p) * (X2p' * beta_subj_for_perm);
-            Res2_cov = beta_subj_for_perm - X2p * B2_cov;
-            mse2_cov = sum(Res2_cov.^2, 1) / dof2;
+            perm_idx  = randperm(nSub);
+            X2p       = X2(perm_idx, :);
+            B2_cov    = pinv(X2p' * X2p) * (X2p' * beta_subj_for_perm);
+            Res2_cov  = beta_subj_for_perm - X2p * B2_cov;
+            mse2_cov  = sum(Res2_cov.^2, 1) / dof2;
             cov_inv_p = diag(pinv(X2p' * X2p));
-            SE2_cov = sqrt(cov_inv_p * mse2_cov);
-            T2_cov = B2_cov ./ SE2_cov;
+            SE2_cov   = sqrt(cov_inv_p * mse2_cov);
+            T2_cov    = B2_cov ./ SE2_cov;
             for iP = 2:nP2
                 tmp(:,:,iP) = reshape(T2_cov(iP,:), nChan, nTime);
             end
         end
-        
+
         tvals_H0(:,:,:,iPerm) = tmp;
     end
-else
-    % Serial permutations
+
     if show_prog
-        h_wait = waitbar(0, 'Starting permutations...', 'Name', 'Permutation Progress');
-        cleanup_waitbar = onCleanup(@() close(h_wait));
+        perm_time = toc(perm_start_par);
+        waitbar(1, h_wait_perm, 'Permutations complete!')
+        fprintf('All %d permutations complete in %.2f minutes (%.4f sec/perm)\n', ...
+            nPerm, perm_time/60, perm_time/nPerm);
+        close(h_wait_perm)
     end
-    
+else
+    % Serial with waitbar
+    if show_prog
+        h_wait_perm = waitbar(0, 'Permutation 0/...', 'Name', 'Permutation Progress');
+        cleanup_perm = onCleanup(@() close_if_valid(h_wait_perm));
+    end
+
     for iPerm = 1:nPerm
-        % --- Intercept null: sign-flip ---
-        signs = 2*(randi(2, nSub, 1) - 1) - 1;
+
+        % Intercept null: sign-flip
+        signs     = 2*(randi(2, nSub, 1) - 1) - 1;
         Y2_signed = bsxfun(@times, beta_subj_for_perm, signs);
-        B2_int = pinv(X2' * X2) * (X2' * Y2_signed);
-        Res2_int = Y2_signed - X2 * B2_int;
-        mse2_int = sum(Res2_int.^2, 1) / dof2;
-        SE2_int = sqrt(cov_XtX_inv * mse2_int);
-        T2_int = B2_int ./ SE2_int;
+        B2_int    = pinv(X2' * X2) * (X2' * Y2_signed);
+        Res2_int  = Y2_signed - X2 * B2_int;
+        mse2_int  = sum(Res2_int.^2, 1) / dof2;
+        SE2_int   = sqrt(cov_XtX_inv * mse2_int);
+        T2_int    = B2_int ./ SE2_int;
         tvals_H0(:,:,1,iPerm) = reshape(T2_int(1,:), nChan, nTime);
-        
-        % --- Covariate null: label-shuffle ---
+
+        % Covariate null: label-shuffle
         if nP2 > 1
-            perm_idx = randperm(nSub);
-            X2p = X2(perm_idx, :);
-            B2_cov = pinv(X2p' * X2p) * (X2p' * beta_subj_for_perm);
-            Res2_cov = beta_subj_for_perm - X2p * B2_cov;
-            mse2_cov = sum(Res2_cov.^2, 1) / dof2;
+            perm_idx  = randperm(nSub);
+            X2p       = X2(perm_idx, :);
+            B2_cov    = pinv(X2p' * X2p) * (X2p' * beta_subj_for_perm);
+            Res2_cov  = beta_subj_for_perm - X2p * B2_cov;
+            mse2_cov  = sum(Res2_cov.^2, 1) / dof2;
             cov_inv_p = diag(pinv(X2p' * X2p));
-            SE2_cov = sqrt(cov_inv_p * mse2_cov);
-            T2_cov = B2_cov ./ SE2_cov;
+            SE2_cov   = sqrt(cov_inv_p * mse2_cov);
+            T2_cov    = B2_cov ./ SE2_cov;
             for iP = 2:nP2
                 tvals_H0(:,:,iP,iPerm) = reshape(T2_cov(iP,:), nChan, nTime);
             end
         end
-        
-        if show_prog && mod(iPerm, max(1, floor(nPerm/100))) == 0
-            progress = iPerm / nPerm;
-            elapsed = toc(perm_start);
-            remaining = elapsed / progress - elapsed;
-            waitbar(progress, h_wait, sprintf('Perm %d/%d | ~%.1fm remaining', ...
-                    iPerm, nPerm, remaining/60));
+
+        if show_prog && mod(iPerm, max(1, floor(nPerm/10))) == 0
+            elapsed   = toc(perm_start);
+            remaining = elapsed / iPerm * (nPerm - iPerm);
+            fprintf('  Permutation %d/%d (%.0f%%) | Elapsed: %.1fm | Remaining: ~%.1fm\n', ...
+                iPerm, nPerm, 100*iPerm/nPerm, elapsed/60, remaining/60);
+            waitbar(iPerm/nPerm, h_wait_perm, ...
+                sprintf('Permutation %d/%d | ~%.1fm remaining', iPerm, nPerm, remaining/60));
         end
     end
-end
 
-if show_prog
-    perm_time = toc(perm_start);
-    fprintf('Permutations complete in %.2f minutes (%.4f sec/perm)\n', ...
+    if show_prog
+        perm_time = toc(perm_start);
+        fprintf('Permutations complete in %.2f minutes (%.4f sec/perm)\n', ...
             perm_time/60, perm_time/nPerm);
+        close(h_wait_perm)
+    end
 end
 
 % ============ COMPUTE PERMUTATION P-VALUES ============
 if show_prog
     fprintf('\nComputing permutation p-values...\n');
     pval_start = tic;
+    h_wait_pval = waitbar(0, 'Computing p-values: 0%', 'Name', 'P-value Progress');
+    cleanup_pval = onCleanup(@() close_if_valid(h_wait_pval));
 end
 
 pvals_obs = zeros(nChan, nTime, nP2);
-pvals_H0 = zeros(nChan, nTime, nP2, nPerm);
+pvals_H0  = zeros(nChan, nTime, nP2, nPerm);
 
+total_iter = nP2 * nChan * nTime;
+completed  = 0;
+last_pct   = 0;
+
+% Vectorized version (much faster, replace the inner loop):
 for iP = 1:nP2
     for iChan = 1:nChan
         for iTime = 1:nTime
-            t_obs = tvals_obs(iChan, iTime, iP);
-            t_null = squeeze(tvals_H0(iChan, iTime, iP, :));
-            
-            % Two-tailed p-value
+            t_obs  = tvals_obs(iChan, iTime, iP);
+            t_null = squeeze(tvals_H0(iChan, iTime, iP, :));  % [nPerm x 1]
+
             pvals_obs(iChan, iTime, iP) = mean(abs(t_null) >= abs(t_obs));
-            
-            % H0 distribution of p-values (for MCC)
-            for iPerm = 1:nPerm
-                t_this = t_null(iPerm);
-                t_others = t_null([1:iPerm-1, iPerm+1:end]);
-                pvals_H0(iChan, iTime, iP, iPerm) = mean(abs(t_others) >= abs(t_this));
-            end
+
+            % Vectorized: each perm vs all others
+            abs_null = abs(t_null);                            % [nPerm x 1]
+            total_ge = sum(abs_null >= abs_null');             % [nPerm x nPerm], each row = count >= that perm
+            pvals_H0(iChan, iTime, iP, :) = (total_ge - 1) / (nPerm - 1);
+            % subtract 1 to exclude self-comparison, divide by nPerm-1
         end
     end
 end
@@ -427,24 +454,14 @@ end
 if show_prog
     pval_time = toc(pval_start);
     fprintf('P-values complete in %.2f seconds\n', pval_time);
-    
-    fprintf('\n=== SUMMARY ===\n');
-    fprintf('Data: %d channels × %d time points × %d subjects\n', nChan, nTime, nSub);
-    fprintf('Level 2: %s\n', cov_label);
-    fprintf('Permutations: %d (sign-flip for intercept', nPerm);
-    if nP2 > 1
-        fprintf(', label-shuffle for covariate)\n');
-    else
-        fprintf(')\n');
-    end
-    for iP = 1:nP2
-        pv = pvals_obs(:,:,iP);
-        fprintf('\nPredictor %d:\n', iP);
-        fprintf('  Min p: %.6f | Median p: %.4f\n', min(pv(:)), median(pv(:)));
-        fprintf('  < 0.05: %d (%.1f%%) | < 0.01: %d (%.1f%%)\n', ...
-                sum(pv(:)<0.05), 100*mean(pv(:)<0.05), ...
-                sum(pv(:)<0.01), 100*mean(pv(:)<0.01));
-    end
+    close(h_wait_pval)
+end
 end
 
+
+% helper
+function close_if_valid(h)
+    if ishandle(h)
+        close(h)
+    end
 end

@@ -133,7 +133,7 @@ if mcctype == 2 && size(tvals_H0,1) > 1
             boot_maxclustersum(boot) = 0;
         end
     end
-
+    
     % find clusters in the observed data
     [posclusterslabelmat,nposclusters] = limo_findcluster(pvals<=pthresh,neighbormatrix,minchan);
     

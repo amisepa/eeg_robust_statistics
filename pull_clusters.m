@@ -125,6 +125,33 @@ while changed
 end
 mask_clusters = mask_clusters(cellfun(@(m) any(m(:)), mask_clusters));
 
+% % The above code merges any two clusters that share even a single frequency bin in any channel.
+% min_chan_overlap = max(2, round(0.1 * nChan));  % e.g. at least 10% of channels
+% changed = true;
+% while changed
+%     changed = false;
+%     for ii = 1:numel(mask_clusters)-1
+%         if ~any(mask_clusters{ii}(:)), continue, end
+%         sig_i = any(mask_clusters{ii}, 1);
+%         for jj = ii+1:numel(mask_clusters)
+%             if ~any(mask_clusters{jj}(:)), continue, end
+%             sig_j = any(mask_clusters{jj}, 1);
+%             overlap_bins = sig_i & sig_j;
+%             % Count how many channels are active in both at overlapping bins
+%             if any(overlap_bins)
+%                 chan_overlap = sum(any(mask_clusters{ii}(:, overlap_bins), 2) & ...
+%                                    any(mask_clusters{jj}(:, overlap_bins), 2));
+%                 if chan_overlap >= min_chan_overlap
+%                     mask_clusters{ii} = mask_clusters{ii} | mask_clusters{jj};
+%                     mask_clusters{jj} = false(size(mask_clusters{jj}));
+%                     sig_i = any(mask_clusters{ii}, 1);
+%                     changed = true;
+%                 end
+%             end
+%         end
+%     end
+% end
+
 % Split clusters by internal gaps along x using sep_thresh
 min_gap_bins = max(1, round(sep_thresh));
 new_masks = {};
@@ -318,10 +345,15 @@ for i = 1:numel(merged_mask_clusters)
         fprintf('Cluster %d: %g to %.0f Hz (%g channels). Peak: %s at %.0f Hz (t = %.2f; %s = %.2f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
             nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
-    else
+    elseif strcmpi(datatype, 'nonlinear')
+        fprintf('Cluster %d: scales %.0f to %.0f (%g channels). Peak: %s at scale %.0f (t = %.2f; %s = %.2f)\n', ...
+            i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
+            nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
+    else  % time as default
         fprintf('Cluster %d: %.0f to %.0f ms (%g channels). Peak: %s at %.0f ms (t = %.2f; %s = %.2f)\n', ...
             i, xaxis(merged_bounds(i,1)), xaxis(merged_bounds(i,2)), ...
             nElectrodes, chanlocs(merged_maxchan(i)).labels, peak_val, t, ES_name(i), ES_full(i));
+        
     end
 end
 

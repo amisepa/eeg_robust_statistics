@@ -12,7 +12,7 @@ end
 load colormap_bwr.mat; 
 % load cm17.mat
 % dmap = cm17a; 
-dmap(1,:) = [0.9 0.9 0.9]; % set NaNs to grey
+% dmap(1,:) = [0.9 0.9 0.9]; % set NaNs to grey
 
 
 % Collapse mask if cell array
@@ -32,6 +32,9 @@ if strcmpi(plot_type,'main') || strcmpi(plot_type,'all')
         subplot(2,2,[1 3]); % big panel
     end
     imagesc(xaxis, 1:size(stats,1), masked_stats);
+    img_h = imagesc(xaxis, 1:size(stats,1), masked_stats);
+    set(img_h, 'AlphaData', ~isnan(masked_stats));  % NaN pixels become transparent
+    set(gca, 'Color', [0.9 0.9 0.9]);  % transparent pixels show axes background = grey
     colormap(gca, dmap); c = colorbar;
     ylabel(c,'T-values','FontWeight','bold','FontSize',12)
     title('Corrected Statistical Map','FontSize',16,'FontWeight','bold')
@@ -62,14 +65,14 @@ if strcmpi(plot_type,'topo') || strcmpi(plot_type,'all')
     if strcmpi(plot_type,'all')
         subplot(2,2,2);
     end
-    % Pick strongest cluster
     [~, idx] = max(abs(clust_tbl.Tvalue));
     peak_val = clust_tbl.Peak(idx);
-    chan_idx = find(strcmpi({chanlocs.labels}, clust_tbl.Channel{idx}));
     [~, freq_idx] = min(abs(xaxis - peak_val));
     topo_mask = mask{min(idx, numel(mask))}(:, freq_idx);
-    topoplot(stats(:,freq_idx), chanlocs, 'colormap', dmap, 'pmask', topo_mask, ...
-             'verbose','off','whitebk','on');
+    topo_data = stats(:, freq_idx);
+    topo_data(~topo_mask) = NaN;  % non-significant → NaN
+    topoplot(topo_data, chanlocs, 'colormap', dmap, 'verbose', 'off', 'whitebk', 'on');
+    set(gca, 'Color', [0.9 0.9 0.9]);
     title(sprintf('Cluster %d peak (%g)', idx, peak_val))
     colorbar;
 end
@@ -94,3 +97,4 @@ set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
 
 
 end
+

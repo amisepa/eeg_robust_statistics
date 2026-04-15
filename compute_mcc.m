@@ -53,13 +53,16 @@ addpath(genpath(repo))
 % end
 
 % Get neighbors
-[~, neighbormatrix] = get_channelneighbors(chanlocs);
+if mcctype > 1
+    params.method = 'triangulation';  % 'triangulation' (default), 'distance', 'parcellation'
+    % params.max_dist = 60;
+    [~, neighbormatrix] = get_channelneighbors(chanlocs, params);
 
-% Ensure neighbormatrix is sanitized
-neighbormatrix = logical(neighbormatrix);
-neighbormatrix = neighbormatrix | neighbormatrix.';  % symmetrize
-neighbormatrix(1:size(neighbormatrix,1)+1:end) = false; % zero diagonal
-
+    % Ensure neighbormatrix is sanitized
+    neighbormatrix = logical(neighbormatrix);
+    neighbormatrix = neighbormatrix | neighbormatrix.';  % symmetrize
+    neighbormatrix(1:size(neighbormatrix,1)+1:end) = false; % zero diagonal
+end
 
 switch mcctype
     case 0
@@ -73,15 +76,14 @@ switch mcctype
 
     case 2
         % Spatiotemporal cluster-based correction
-        
         % [mask, pcorr] = correct_cluster(tvals.^2, pvals, tvals_H0.^2, pvals_H0, neighbormatrix, mcctype, pthresh);
 
-        % A cluster with a few strong peaks and many weak voxels will have
-        %  relatively larger mass under t² than under |t|. So t² biases 
-        % toward "peaky" clusters, while |t| treats voxels more uniformly.
-         % LIMO uses t² to be consistent with converting to F-statistics 
-         % (F = t² with 1 numerator df). But using |t| (abs) is arguably more 
-         % interpretable and consistent with your t-max approach.
+        % % A cluster with a few strong peaks and many weak voxels will have
+        % %  relatively larger mass under t² than under |t|. So t² biases
+        % % toward "peaky" clusters, while |t| treats voxels more uniformly.
+        % % LIMO uses t² to be consistent with converting to F-statistics
+        % % (F = t² with 1 numerator df). But using |t| (abs) is arguably more
+        % % interpretable and consistent with your t-max approach.
         [mask, pcorr] = correct_cluster(abs(tvals), pvals, abs(tvals_H0), pvals_H0, neighbormatrix, mcctype, pthresh);
 
     case 3

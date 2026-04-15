@@ -16,6 +16,7 @@ function hs = plot_clusters(summary_tbl, mask, tvals, map, f, chanlocs, line_lab
 %   'LineNoiseBW'   bandwidth (Hz) around each line-noise freq (default 1)
 %   'DataType'      'scalp' (default) or 'source'
 %   'XTickLabels'   cellstr/strings for x-axis labels on the curve plot; if empty, numeric f is shown
+%   'Domain'        'time' (ms) | 'frequency' (Hz) | 'nonlinear' (scale factors, default)
 %
 % Notes
 %   - Axis computations always use numeric f
@@ -25,12 +26,32 @@ ip = inputParser;
 addParameter(ip,'LineNoiseHz',60);
 addParameter(ip,'LineNoiseBW',1);
 addParameter(ip,'DataType','scalp');
-addParameter(ip,'XTickLabels',[]);     % avoid shadowing xticks()
+addParameter(ip,'XTickLabels',[]);
+addParameter(ip,'Domain','nonlinear');   % 'time' | 'frequency' | 'nonlinear'
 parse(ip,varargin{:});
 lnHz        = ip.Results.LineNoiseHz;
 lnBW        = ip.Results.LineNoiseBW;
 dataType    = ip.Results.DataType;
 xTickLabels = ip.Results.XTickLabels;
+domain      = lower(ip.Results.Domain);
+
+% Unit strings derived from domain
+switch domain
+    case 'time'
+        unit_label  = 'ms';
+        peak_fmt    = 'Peak: %.0f ms';
+        xlabel_str  = 'Time (ms)';
+    case 'frequency'
+        unit_label  = 'Hz';
+        peak_fmt    = 'Peak: %.2f Hz';
+        xlabel_str  = 'Frequency (Hz)';
+    case 'nonlinear'
+        unit_label  = 'scale factors';
+        peak_fmt    = 'Scale factor: %g';
+        xlabel_str  = 'Scale factors';
+    otherwise
+        error('plot_clusters: Domain must be ''time'', ''frequency'', or ''nonlinear''.');
+end
 
 % Basic sizes
 [nChan, nFreq] = size(tvals);
@@ -65,7 +86,7 @@ for iClust = 1:height(summary_tbl)
     ch = summary_tbl.Channel{iClust};
     if isstring(ch), ch = char(ch); end
 
-        %%%%%%%%%%%%%%%%%% CURVE PLOT AT PEAK CHANNEL %%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%% CURVE PLOT AT PEAK CHANNEL %%%%%%%%%%%%%%%%%%
     sz = size(map);
 
     % line-noise mask
@@ -91,19 +112,19 @@ for iClust = 1:height(summary_tbl)
 
     if numel(sz)==2 && ~isempty(tvals) && all(size(map)==size(tvals))
         % GLM: beta with CI from t
-        b_row = map(ci_curve, :);
-        t_row = tvals(ci_curve, :);
+        b_row  = map(ci_curve, :);
+        t_row  = tvals(ci_curve, :);
         se_row = abs(b_row ./ t_row);
         se_row(~isfinite(se_row)) = NaN;
         lo = b_row - 1.96*se_row;
         hi = b_row + 1.96*se_row;
-        y = b_row;
+        y  = b_row;
     elseif numel(sz)==3 && sz(1)==nChan && sz(2)==nFreq
         % PSD: mean across subjects, CI from SE
         rows = squeeze(map(ci_curve, :, :)).';    % [nSub x nFreq]
-        y  = mean(rows,1,'omitmissing');
-        s  = std(rows,0,1,'omitmissing');
-        n  = sum(isfinite(rows),1);
+        y  = mean(rows, 1, 'omitmissing');
+        s  = std(rows,  0, 1, 'omitmissing');
+        n  = sum(isfinite(rows), 1);
         se = s ./ sqrt(max(n,1));
         lo = y - 1.96*se;
         hi = y + 1.96*se;
@@ -112,7 +133,7 @@ for iClust = 1:height(summary_tbl)
         if numel(sz)~=2 || ~all(size(map)==[nChan nFreq])
             error('map must be [nChan x nFreq] (GLM) or [nChan x nFreq x nSub] (PSD).');
         end
-        y = map(ci_curve, :);
+        y  = map(ci_curve, :);
         lo = []; hi = [];
     end
 
@@ -140,8 +161,8 @@ for iClust = 1:height(summary_tbl)
     if ~isempty(lo) && ~isempty(hi)
         good = isfinite(lo) & isfinite(hi);
         if any(good)
-            dci = [false, good, false];
-            starts = find(diff(dci)==1);
+            dci    = [false, good, false];
+            starts = find(diff(dci)== 1);
             ends   = find(diff(dci)==-1) - 1;
             for s = 1:numel(starts)
                 idx = starts(s):ends(s);
@@ -152,20 +173,20 @@ for iClust = 1:height(summary_tbl)
     end
 
     % baseline
-    plot([f(1) f(end)], [0 0], '--', 'Color', 'k', 'LineWidth', 1.2);
+    plot([f(1) f(end)], [0 0], '--', 'Color','k', 'LineWidth',1.2);
 
     % main line
-    plot(f, y, 'color',[0.4660, 0.6740, 0.1880], 'LineWidth', 2);
+    plot(f, y, 'color',[0.4660, 0.6740, 0.1880], 'LineWidth',2);
 
     % bottom significance bars (robust to 1-bin clusters)
     yl = ylim; H = 0.015*(yl(2)-yl(1)); y0 = yl(1) - 1.6*H; ylim([y0 yl(2)]);
     if numel(f) > 1
-        d1 = f(2)-f(1); dN = f(end)-f(end-1);
+        d1    = f(2)-f(1); dN = f(end)-f(end-1);
         edges = [f(1)-d1/2, 0.5*(f(1:end-1)+f(2:end)), f(end)+dN/2];
     else
         edges = [f(1)-0.5, f(1)+0.5];
     end
-    dsig = [false, sig_mask(:).', false];
+    dsig   = [false, sig_mask(:).', false];
     starts = find(diff(dsig)== 1);
     ends   = find(diff(dsig)==-1);
     for k = 1:numel(starts)
@@ -176,12 +197,10 @@ for iClust = 1:height(summary_tbl)
 
     % optional x tick labels
     if ~isempty(xTickLabels)
-        % accept cellstr/string; otherwise convert
         labs = string(xTickLabels(:).');
-        % if mismatch, sample to ~10 labels
         if numel(labs) ~= nFreq
             stride = max(1, round(nFreq/10));
-            keep = false(1, nFreq); keep(1:stride:end) = true; keep(end) = true;
+            keep   = false(1, nFreq); keep(1:stride:end) = true; keep(end) = true;
             xticks(f(keep));
             xticklabels(labs(1:min(sum(keep), numel(labs))));
         else
@@ -191,25 +210,15 @@ for iClust = 1:height(summary_tbl)
         xtickangle(45);
         set(gca,'TickLabelInterpreter','none');
     end
-
-    xlabel('Time (ms)');     % or 'Frequency (Hz)' % 'Scale factor'
+    xlabel(xlabel_str);
     ylabel(line_label);
-    title(sprintf('Cluster %d - %s', iClust, ch));
-    set(gca,'FontSize',14,'LineWidth',1.2);
+    title(sprintf('Cluster %d - %s  (%s)', iClust, ch, unit_label));
+    set(gca,'FontSize',16,'LineWidth',1.2);
     box on; grid off; axis tight
-    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+    set(findall(gcf,'type','axes'),'FontSize',16,'FontWeight','bold');
 
-    
     %%%%%%%%%%%% TOPO/BRAIN PLOT AT PEAK %%%%%%%%%%%%
-    topo_mask = false(nChan,1);
-    if iClust <= numel(mask) && ~isempty(mask{iClust})
-        mc = mask{iClust};
-        if size(mc,2) == nFreq
-            % topo_mask = mc(:, fi);  % topo mask is extracted at only the peak time bin
-            topo_mask = any(mc, 2);   % collapse across time
-        end
-    end
-    
+
     % 3D BRAIN PLOT (SOURCE DATA)
     if strcmpi(dataType,'source')
         load cm17.mat
@@ -221,17 +230,26 @@ for iClust = 1:height(summary_tbl)
         end
 
         if tmin < 0 && tmax > 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [-max(abs(tvals(:))) max(abs(tvals(:)))], cm17, 't-values', []);
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [-max(abs(tvals(:))) max(abs(tvals(:)))], cm17,  't-values', []);
         elseif tmax <= 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [min(mean(tvals,2,'omitnan')) tmax], cm17b, 't-values', []);
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [min(mean(tvals,2,'omitnan')) tmax],      cm17b, 't-values', []);
         elseif tmin >= 0
-            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [tmin max(mean(tvals,2,'omitnan'))], cm17a, 't-values', []);
+            allplots_cortex_BS(cortex, mean(tvals,2,'omitnan'), [tmin max(mean(tvals,2,'omitnan'))],      cm17a, 't-values', []);
         end
         hs.topo{iClust} = gcf;
-    
+
     % SCALP TOPOGRAPHY
     else
-        load("colormap_bwr.mat"); dmap(1,:) = [.9 .9 .9]; % NaNs to gray
+        load("colormap_bwr.mat"); 
+        dmap(1,:) = [.9 .9 .9]; % NaNs to gray
+
+        topo_mask = false(nChan,1);
+        if iClust <= numel(mask) && ~isempty(mask{iClust})
+            mc = mask{iClust};
+            if size(mc,2) == nFreq
+                topo_mask = any(mc, 2);   % collapse across time/freq/scale
+            end
+        end
 
         ci = find(strcmpi({chanlocs.labels}, ch), 1);
         if isempty(ci)
@@ -240,39 +258,25 @@ for iClust = 1:height(summary_tbl)
         end
 
         hs.topo{iClust} = figure('Color','w');
-        % try
-            topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
-                     'verbose','off','colormap', dmap, 'whitebk','on', ...
-                     'gridscale', 300);
-
-            % topoplot(tvals(:, fi), chanlocs, 'pmask', topo_mask, ...
-            %     'verbose','off', 'colormap', dmap, 'whitebk','on', ...
-            %     'gridscale', 300, 'interplimits', 'head','plotrad',0.5);
-
-            % % After your topoplot call, add this:
-            % h = findobj(gca, 'Type', 'surface');
-            % if isempty(h), h = findobj(gca, 'Type', 'image'); end
-            % if ~isempty(h)
-            %     cd = get(h(1), 'CData');
-            %     nanmask = isnan(cd);
-            %     if any(nanmask(:))
-            %         cd = regionfill(cd, nanmask);
-            %         set(h(1), 'CData', cd);
-            %     end
-            % end
-
-
-        % catch
-            % topoplot(tvals(:, fi), chanlocs, 'verbose','off','colormap', dmap, 'whitebk','on');
-        % end
-        c = colorbar; ylabel(c,'t-values','FontWeight','bold','FontSize',11)
-        set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
-        set(gcf, 'Color', 'white')
+        topo_data          = tvals(:, fi);        % full t-map at peak time
+        sig_idx            = find(topo_mask);
+        if ~isempty(sig_idx)
+            topoplot(topo_data, chanlocs, 'electrodes', 'on', ...
+                'verbose', 'off', 'colormap', dmap, 'whitebk', 'on', ...
+                'emarker',  {'o', [0.2 0.2 0.2], 2, 2}, ...    % all electrodes grey
+                'emarker2', {sig_idx, 'o',  [1.0 0.85 0.0], 7, 2});  % significant = red ring
+        else
+            topoplot(topo_data, chanlocs, 'electrodes', 'on', ...
+                'verbose', 'off', 'colormap', dmap, 'whitebk', 'on', ...
+                'emarker', {'o', [0.2 0.2 0.2], 2, 2});
+        end
+        c = colorbar; ylabel(c, 't-values', 'FontWeight', 'bold', 'FontSize', 11);
+        % set(gca,'CLim',[-max(abs(tvals(:))) max(abs(tvals(:)))])
+        % set(gcf,'Color','white')
     end
 
-    title(sprintf('Cluster %d (Time: %.0f ms)', iClust, f(fi)));
-    % title(sprintf('Cluster %d (Scale factor: %g)', iClust, f(fi)));
-    set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+    title(sprintf(['Cluster %d (' peak_fmt ')'], iClust, f(fi)));
+    set(findall(gcf,'type','axes'),'FontSize',16,'FontWeight','bold');
 
 end
 end

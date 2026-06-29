@@ -1,39 +1,11 @@
-function c = redblue(m)
-%REDBLUE    Shades of red and blue color map
-%   REDBLUE(M), is an M-by-3 matrix that defines a colormap.
-%   The colors begin with bright blue, range through shades of
-%   blue to white, and then through shades of red to bright red.
-%   REDBLUE, by itself, is the same length as the current figure's
-%   colormap. If no figure exists, MATLAB creates one.
-%
-%   For example, to reset the colormap of the current figure:
-%
-%             colormap(redblue)
-%
-%   See also HSV, GRAY, HOT, BONE, COPPER, PINK, FLAG, 
-%   COLORMAP, RGBPLOT.
-
-%   Adam Auton, 9th October 2009
-
-if nargin < 1, m = size(get(gcf,'colormap'),1); end
-
-if (mod(m,2) == 0)
-    % From [0 0 1] to [1 1 1], then [1 1 1] to [1 0 0];
-    m1 = m*0.5;
-    r = (0:m1-1)'/max(m1-1,1);
-    g = r;
-    r = [r; ones(m1,1)];
-    g = [g; flipud(g)];
-    b = flipud(r);
-else
-    % From [0 0 1] to [1 1 1] to [1 0 0];
-    m1 = floor(m*0.5);
-    r = (0:m1-1)'/max(m1,1);
-    g = r;
-    r = [r; ones(m1+1,1)];
-    g = [g; 1; flipud(g)];
-    b = flipud(r);
+function cmap = colormap_redblue(n)
+if nargin < 1, n = 256; end
+half = floor(n/2);
+r1 = linspace(0.10, 1.0, half)';
+g1 = linspace(0.25, 1.0, half)';
+b1 = linspace(0.85, 1.0, half)';
+r2 = linspace(1.0, 0.85, n-half)';
+g2 = linspace(1.0, 0.15, n-half)';
+b2 = linspace(1.0, 0.10, n-half)';
+cmap = [[r1;r2], [g1;g2], [b1;b2]];
 end
-
-c = [r g b]; 
-

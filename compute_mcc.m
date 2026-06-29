@@ -85,6 +85,7 @@ switch mcctype
         % % (F = t² with 1 numerator df). But using |t| (abs) is arguably more
         % % interpretable and consistent with your t-max approach.
         [mask, pcorr] = correct_cluster(abs(tvals), pvals, abs(tvals_H0), pvals_H0, neighbormatrix, mcctype, pthresh);
+        mask = mask > 0;  % binarize cluster labels
 
     case 3
         % Spatiotemporal TFCE correction with FWER max control (mask + pcorr)
@@ -129,6 +130,10 @@ switch mcctype
 
         % Max-TFCE FWER correction -> mask and corrected p
         [mask, pcorr] = correct_max(tfce_score, tfce_H0_score, pthresh);
+
+        if ~any(mask > 0, 'all')
+            disp("No significant effect after TFCE correction.")
+        end
 
     otherwise
         error('Invalid MCC type.')

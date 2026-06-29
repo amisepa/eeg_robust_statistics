@@ -9,10 +9,12 @@ if isempty(mask) || (iscell(mask) && ~any(cell2mat(mask), 'all')) || ...
     return
 end
 
-load colormap_bwr.mat; 
+% load colormap_bwr.mat; 
 % load cm17.mat
 % dmap = cm17a; 
 % dmap(1,:) = [0.9 0.9 0.9]; % set NaNs to grey
+rdbu_cmap    = interp1([1;128;256],[0.698 0.094 0.168;1 1 1;0.129 0.400 0.675],(1:256)','linear');
+dmap    = flipud(max(0,min(1,rdbu_cmap)));
 
 
 % Collapse mask if cell array
@@ -24,14 +26,14 @@ else
 end
 masked_stats = stats; masked_stats(~global_mask) = NaN;
 
-figure('Color','w');
+figure('Color','w','ToolBar','none','MenuBar','none');
 
 % ---------------- MAIN PLOT ----------------
 if strcmpi(plot_type,'main') || strcmpi(plot_type,'all')
     if strcmpi(plot_type,'all')
         subplot(2,2,[1 3]); % big panel
     end
-    imagesc(xaxis, 1:size(stats,1), masked_stats);
+    % imagesc(xaxis, 1:size(stats,1), masked_stats);
     img_h = imagesc(xaxis, 1:size(stats,1), masked_stats);
     set(img_h, 'AlphaData', ~isnan(masked_stats));  % NaN pixels become transparent
     set(gca, 'Color', [0.9 0.9 0.9]);  % transparent pixels show axes background = grey
@@ -93,8 +95,9 @@ if strcmpi(plot_type,'course') || strcmpi(plot_type,'all')
     box on
 end
 
-set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
-
+% set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold');
+set(get(gca,'Title'), 'Color', 'k', 'FontSize', 16, 'FontWeight', 'bold');
+set(findall(gcf, 'type', 'axes'), 'FontSize', 12, 'FontWeight', 'bold', 'XColor', 'k', 'YColor', 'k');
 
 end
 

@@ -121,12 +121,16 @@ if mcctype == 2 && size(tvals_H0,1) > 1
         % reshape the output to the original format of the data
         cluster = reshape(cluster, spatdimlength, nfreq, ntime);
 
-        % Compute the mass for each cluster
-        bootM_b = tvals_H0(:,:,boot);
+        % Compute the mass for each cluster.
+        % ABSOLUTE t, not signed. Summing signed t and comparing against the
+        % maximum of the null distribution means a predominantly negative
+        % cluster has a large negative mass and can never pass, so negative
+        % effects were undetectable. Fixed Aug 2026.
+        bootM_b = abs(tvals_H0(:,:,boot));
         if nClusters~=0
             tmp = zeros(1,nClusters);
             for C = 1:nClusters
-                tmp(C) = sum(bootM_b(cluster==C)); % sum stat value in a cluster label
+                tmp(C) = sum(bootM_b(cluster==C)); % sum |stat| in a cluster label
             end
             boot_maxclustersum(boot) = max(tmp(:)); % save max value only
         else
@@ -157,8 +161,9 @@ if mcctype == 2 && size(tvals_H0,1) > 1
     mask = zeros(size(tvals));
     cluster_label = 1; 
     if nposclusters~=0
+        aT = abs(tvals);   % see the note above: mass is on |t|
         for C = nposclusters:-1:1 % compute cluster sums & compare to bootstrap threshold
-            maxval(C) = sum(tvals(posclusterslabelmat==C));
+            maxval(C) = sum(aT(posclusterslabelmat==C));
             if  maxval(C)>= max_th
                 mask(posclusterslabelmat==C)= cluster_label; % flag clusters above threshold
                 cluster_label = cluster_label+1;
@@ -173,12 +178,12 @@ if mcctype == 2 && size(tvals_H0,1) > 1
         L = posclusterslabelmat.*mask2;     % remove non significant clusters
         CL_list = setdiff(unique(L),0);     % remove label 0
         for CL = 1:length(CL_list)
-            cluster_mass = sum(tvals(L==CL_list(CL)));
+            cluster_mass = sum(aT(L==CL_list(CL)));
             if any(cluster_mass == maxval) % double checking this is in the mask
-                p = 1-sum(cluster_mass >= sort_clustermax)./nboot;
-                if p ==0
-                    p = 1/nboot; % never 0
-                end
+                % Include the observed statistic in the null (Phipson &
+                % Smyth 2010) so p is never 0 rather than being floored to
+                % 1/nboot after the fact.
+                p = (1 + sum(sort_clustermax >= cluster_mass)) ./ (1 + nboot);
                 % tmp = ones(size(mask));
                 % tmp(L==CL_list(CL)) = p; % set p-values for many cells
                 % pcorr = pcorr.*tmp;   % tmp is never at the same location so we can just add values
@@ -216,8 +221,9 @@ if mcctype == 2 && size(tvals_H0,1) == 1 || mcctype == 3
     mask = sigcluster.elec_mask;
 end
 
-% Plot
-if sum(mask(:)) == 0
+% Plot. Skipped when no display is available: creating a figure aborts MATLAB
+% in a headless batch session.
+if sum(mask(:)) == 0 && usejava('desktop')
     figure('Name','Cluster correction under H0')
     mass = sort(boot_maxclustersum);
     plot(mass,'LineWidth',3); grid on; hold on;

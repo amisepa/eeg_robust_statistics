@@ -430,8 +430,10 @@ for iChan = 1:nChan
         t_obs  = tvals_obs(iChan, iTime);
         t_null = squeeze(tvals_H0(iChan, iTime, :));   % [nPerm x 1]
 
-        % Observed p-value
-        pvals_obs(iChan, iTime) = mean(abs(t_null) >= abs(t_obs));
+        % Observed p-value. The observed statistic is included in the null
+        % (Phipson & Smyth 2010): mean(...) alone can return exactly 0, which
+        % is not a possible p-value for a finite permutation test.
+        pvals_obs(iChan, iTime) = (1 + sum(abs(t_null) >= abs(t_obs))) / (1 + nPerm);
 
         % Vectorized H0 p-values: each perm vs all others
         abs_null = abs(t_null);                          % [nPerm x 1]

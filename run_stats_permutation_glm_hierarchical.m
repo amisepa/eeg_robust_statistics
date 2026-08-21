@@ -123,6 +123,9 @@ subj_idx   = p.Results.Subjects;
 method     = upper(p.Results.Method);
 weightType = upper(p.Results.WeightType);
 show_prog  = p.Results.Progress;
+% waitbar() creates a figure, which aborts MATLAB in a headless batch session.
+% Text progress still prints; only the graphical bar is suppressed.
+show_gui   = show_prog && usejava('desktop');
 use_parallel = p.Results.Parallel;
 
 % Set default nPerm if not provided
@@ -276,7 +279,7 @@ end
 tvals_H0 = nan(nChan, nTime, nPerm);
 
 % Progress tracking variables
-if show_prog && ~use_parallel
+if show_gui && ~use_parallel
     % Only use waitbar for serial execution
     h_wait = waitbar(0, 'Starting permutations...', 'Name', 'Permutation Progress');
     cleanup_waitbar = onCleanup(@() close(h_wait));
@@ -390,7 +393,7 @@ else
         tvals_H0(:, :, iPerm) = betas_perm_mean ./ betas_perm_se;
 
         % Update waitbar
-        if show_prog && mod(iPerm, max(1, floor(nPerm/100))) == 0
+        if show_gui && mod(iPerm, max(1, floor(nPerm/100))) == 0
             progress = iPerm / nPerm;
             elapsed = toc(perm_start);
             remaining = elapsed / progress - elapsed;
@@ -411,6 +414,9 @@ end
 if show_prog
     fprintf('\n=== COMPUTING P-VALUES ===\n');
     pval_start = tic;
+end
+h_wait_pval = [];
+if show_gui
     h_wait_pval = waitbar(0, 'Computing p-values: 0%', 'Name', 'P-value Progress');
     cleanup_pval = onCleanup(@() close_if_valid(h_wait_pval));
 end
@@ -448,8 +454,10 @@ for iChan = 1:nChan
             remaining = elapsed / completed * (total_iter - completed);
             fprintf('  P-values: %d%% | Elapsed: %.1fs | Remaining: ~%.1fs\n', ...
                 current_pct, elapsed, remaining);
-            waitbar(completed/total_iter, h_wait_pval, ...
-                sprintf('P-values: %d%% | ~%.1fs remaining', current_pct, remaining));
+            if show_gui
+                waitbar(completed/total_iter, h_wait_pval, ...
+                    sprintf('P-values: %d%% | ~%.1fs remaining', current_pct, remaining));
+            end
             last_pct = current_pct;
         end
     end
@@ -489,7 +497,7 @@ end
 
 % helper
 function close_if_valid(h)
-    if ishandle(h)
+    if ~isempty(h) && ishandle(h)
         close(h)
     end
 end
